@@ -1,0 +1,55 @@
+# Maintainer: Graphite contributors
+# Build with:  makepkg -si   (run ./install.sh from the release folder, it does this for you)
+pkgname=graphite-planner
+pkgver=0.25.0
+pkgrel=1
+pkgdesc='Fast native day planner and notes outliner (Qt 6) with chemistry, maths and timetables'
+arch=('x86_64' 'aarch64')
+url='https://github.com/Intezard006/graphite-planner'
+license=('MIT')
+# qt6-base: Widgets, Network, Gui (PDF) and the Test module used by check().
+# noto-fonts-extra: holds Noto Serif Display (default title font) and Noto Sans Mono.
+depends=('qt6-base' 'fontconfig' 'freetype2' 'noto-fonts-extra')
+makedepends=('cmake' 'ninja')
+optdepends=('ttf-inter: the default body font (falls back to Noto Sans)'
+            'libnotify: desktop notification when a /timer finishes'
+            'hyprland: blur meter in transparent mode')
+source=("$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')   # make-tarball.sh writes the real checksum here
+
+build() {
+    cmake -S "$pkgname-$pkgver" -B build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DGRAPHITE_PACKAGED=ON
+    cmake --build build
+}
+
+check() {
+    # The tests open real (offscreen) windows; keep every file they write inside $srcdir.
+    export QT_QPA_PLATFORM=offscreen
+    export HOME="$srcdir/test-home"
+    export XDG_CONFIG_HOME="$srcdir/test-home/config"
+    export XDG_DATA_HOME="$srcdir/test-home/data"
+    export XDG_CACHE_HOME="$srcdir/test-home/cache"
+    mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME"
+    ctest --test-dir build --output-on-failure
+}
+
+package() {
+    DESTDIR="$pkgdir" cmake --install build    # -> /usr/bin/graphite, /usr/share/graphite/tex
+
+    install -Dm644 /dev/stdin "$pkgdir/usr/share/applications/graphite.desktop" <<DESKTOP
+[Desktop Entry]
+Type=Application
+Name=Graphite
+Comment=Day planner and notes outliner
+Exec=graphite %F
+Icon=accessories-text-editor
+Terminal=false
+Categories=Office;Education;
+StartupWMClass=graphite
+DESKTOP
+
+    install -Dm644 "$pkgname-$pkgver/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

@@ -1,0 +1,104 @@
+name: macOS
+
+on:
+  push:
+    branches: [main, packaging]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # the release step attaches the dmg to a v* tag
+
+jobs:
+  build:
+    runs-on: macos-14   # Apple Silicon (arm64)
+    steps:
+      - uses: actions/checkout@v4.2.2   # third_party is vendored: no submodules
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4.3.0
+        with:
+          version: '6.8.3'
+          host: mac
+          target: desktop
+          arch: clang_64     # universal Qt build; runs natively on arm64
+          cache: true
+
+      - name: Install Ninja
+        run: brew install ninja
+
+      - name: Version
+        id: ver
+        run: |
+          VERSION=$(sed -n 's/^project(graphite VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Fonts (Noto, SIL OFL)
+        run: |
+          FONTS=build/Graphite.app/Contents/Resources/fonts
+          mkdir -p "$FONTS"
+          BASE=https://github.com/notofonts/notofonts.github.io/raw/main/fonts
+          get() {   # family file
+            curl -fsSL "$BASE/$1/hinted/ttf/$2" -o "$FONTS/$2" || echo "::warning::could not download $2"
+          }
+          for s in Regular Bold Italic BoldItalic; do get NotoSans "NotoSans-$s.ttf"; done
+          for s in Regular Bold Italic Black; do get NotoSerifDisplay "NotoSerifDisplay-$s.ttf"; done
+          for s in Regular Bold; do get NotoSansMono "NotoSansMono-$s.ttf"; done
+          # The three faces Graphite starts with must be there.
+          for f in NotoSans-Regular NotoSerifDisplay-Black NotoSansMono-Regular; do
+            test -s "$FONTS/$f.ttf"
+          done
+
+      - name: App icon (optional)
+        run: |
+          # packaging/macos/icon.png (1024x1024), when the repo has one, becomes the .icns
+          if [ -f packaging/macos/icon.png ]; then
+            SET=build/Graphite.iconset
+            mkdir -p "$SET"
+            for s in 16 32 128 256 512; do
+              sips -z $s $s packaging/macos/icon.png --out "$SET/icon_${s}x${s}.png"
+              sips -z $((s*2)) $((s*2)) packaging/macos/icon.png --out "$SET/icon_${s}x${s}@2x.png"
+            done
+            iconutil -c icns "$SET" -o build/Graphite.app/Contents/Resources/Graphite.icns
+            /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile Graphite.icns" build/Graphite.app/Contents/Info.plist
+          fi
+
+      - name: Bundle Qt (macdeployqt)
+        run: macdeployqt build/Graphite.app
+
+      - name: Ad-hoc sign (arm64 needs a signature to run)
+        run: |
+          codesign --force --deep --sign - build/Graphite.app
+          codesign --verify --deep --strict --verbose=2 build/Graphite.app
+
+      - name: Disk image
+        run: |
+          DMG="Graphite-${{ steps.ver.outputs.version }}-macos-arm64.dmg"
+          mkdir -p build/dmg
+          cp -R build/Graphite.app build/dmg/
+          ln -s /Applications build/dmg/Applications
+          hdiutil create -volname Graphite -srcfolder build/dmg -ov -format UDZO "$DMG"
+          echo "DMG=$DMG" >> "$GITHUB_ENV"
+
+      - name: Upload the dmg
+        uses: actions/upload-artifact@v4.6.0
+        with:
+          name: Graphite-macos-arm64
+          path: ${{ env.DMG }}
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2.2.1
+        with:
+          files: ${{ env.DMG }}
