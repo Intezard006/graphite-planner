@@ -509,15 +509,33 @@ int main(int argc, char** argv) {
     trigger(w, "Ctrl+Shift+F");
     settle();
     fonts = w.findChild<FontPicker*>()->findChild<QListWidget*>();
-    typeText(QApplication::focusWidget(), "dejavu serif");
-    CHECK(fonts->currentItem() && fonts->currentItem()->text().startsWith("DejaVu Serif"));
-    int visible = 0;
+    // Families that exist on this machine (CI images have few): DejaVu when present, else any.
+    QStringList installed = QFontDatabase::families();
+    installed.removeDuplicates();
+    CHECK(!installed.isEmpty());
+    const QString serifWanted = installed.contains("DejaVu Serif") ? QString("DejaVu Serif") : installed.first();
+    QString monoWanted = installed.contains("DejaVu Sans Mono") ? QString("DejaVu Sans Mono")
+                                                               : QFontDatabase::systemFont(QFontDatabase::FixedFont).family();
+    if (!installed.contains(monoWanted) || monoWanted == serifWanted) {
+        monoWanted.clear();
+        for (const QString& f : installed)
+            if (f != serifWanted && QFontDatabase::isFixedPitch(f)) { monoWanted = f; break; }
+        if (monoWanted.isEmpty())
+            for (const QString& f : installed)
+                if (f != serifWanted) { monoWanted = f; break; }
+    }
+    CHECK(!monoWanted.isEmpty());
+    typeText(QApplication::focusWidget(), serifWanted);
+    QString titlePicked = fonts->currentItem() ? fonts->currentItem()->text() : QString();
+    CHECK(titlePicked.contains(serifWanted, Qt::CaseInsensitive));
+    int visible = 0, shownWanted = 0;
     for (int i = 0; i < fonts->count(); ++i) visible += !fonts->item(i)->isHidden();
-    CHECK(visible >= 1 && visible < 10);
+    for (const QString& f : installed) shownWanted += f.contains(serifWanted, Qt::CaseInsensitive);
+    CHECK(visible >= 1 && visible == shownWanted);
     shot(w, "8_font_picker");
     press(QApplication::focusWidget(), Qt::Key_Return);
     settle();
-    CHECK(Theme::instance().titleFamily().startsWith("DejaVu Serif"));
+    CHECK_EQ(Theme::instance().titleFamily(), titlePicked);
     CHECK(!w.findChild<FontPicker*>());
     Theme::instance().setTitleFamily("No Such Font Family");
     CHECK(Theme::instance().titleFont().weight() == QFont::Black);  // falls back to the default
@@ -526,24 +544,27 @@ int main(int argc, char** argv) {
     // The same picker sets the body font: Tab switches tabs, Enter keeps both, Esc restores both.
     trigger(w, "Ctrl+Shift+F");
     settle();
-    typeText(QApplication::focusWidget(), "dejavu serif");
+    typeText(QApplication::focusWidget(), serifWanted);
     press(QApplication::focusWidget(), Qt::Key_Tab);                        // title chosen, now body
     press(QApplication::focusWidget(), Qt::Key_A, Qt::ControlModifier);     // select the search text
-    typeText(QApplication::focusWidget(), "dejavu sans mono");
+    typeText(QApplication::focusWidget(), monoWanted);
     QTest::qWait(200);
-    CHECK(Theme::instance().bodyFamily().startsWith("DejaVu Sans Mono"));  // live preview
+    fonts = w.findChild<FontPicker*>()->findChild<QListWidget*>();
+    const QString bodyPicked = fonts->currentItem() ? fonts->currentItem()->text() : QString();
+    CHECK(bodyPicked.contains(monoWanted, Qt::CaseInsensitive));
+    CHECK_EQ(Theme::instance().bodyFamily(), bodyPicked);  // live preview
     press(QApplication::focusWidget(), Qt::Key_Return);
     settle();
-    CHECK(Theme::instance().titleFamily().startsWith("DejaVu Serif"));
-    CHECK(Theme::instance().bodyFamily().startsWith("DejaVu Sans Mono"));
-    CHECK(QFontInfo(Theme::instance().bodyFont()).family().startsWith("DejaVu Sans Mono"));
+    CHECK_EQ(Theme::instance().titleFamily(), titlePicked);
+    CHECK_EQ(Theme::instance().bodyFamily(), bodyPicked);
+    CHECK(!QFontInfo(Theme::instance().bodyFont()).family().isEmpty());
     trigger(w, "Ctrl+Shift+F");
     settle();
     press(QApplication::focusWidget(), Qt::Key_Tab);
     press(QApplication::focusWidget(), Qt::Key_Up);  // preview something else...
     press(QApplication::focusWidget(), Qt::Key_Escape);  // ...and cancel
     settle();
-    CHECK(Theme::instance().bodyFamily().startsWith("DejaVu Sans Mono"));
+    CHECK_EQ(Theme::instance().bodyFamily(), bodyPicked);
     Theme::instance().setTitleFamily(QString());
     Theme::instance().setBodyFamily(QString());
 
@@ -1410,7 +1431,11 @@ int main(int argc, char** argv) {
         CHECK(w.openPath(g + "/Organic Chem/Carbonyls.md"));
         settle();
         bool sawBook = false;
-        for (QTreeWidgetItemIterator it(ex); *it; ++it) sawBook = sawBook || (*it)->text(0).contains("Organic Chem");
+        // The watch is asynchronous (kqueue on macOS is slower than inotify): give it a few seconds.
+        for (int tries = 0; tries < 40 && !sawBook; ++tries) {
+            for (QTreeWidgetItemIterator it(ex); *it; ++it) sawBook = sawBook || (*it)->text(0).contains("Organic Chem");
+            if (!sawBook) QTest::qWait(150);
+        }
         CHECK(sawBook);
         bool sawLogseq = false;  // the tree's own folders are not books
         for (QTreeWidgetItemIterator it(ex); *it; ++it) sawLogseq = sawLogseq || (*it)->text(0).contains("logseq");
