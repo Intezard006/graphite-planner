@@ -509,29 +509,44 @@ int main(int argc, char** argv) {
     trigger(w, "Ctrl+Shift+F");
     settle();
     fonts = w.findChild<FontPicker*>()->findChild<QListWidget*>();
-    // Families that exist on this machine (CI images have few): DejaVu when present, else any.
-    QStringList installed = QFontDatabase::families();
-    installed.removeDuplicates();
-    CHECK(!installed.isEmpty());
-    const QString serifWanted = installed.contains("DejaVu Serif") ? QString("DejaVu Serif") : installed.first();
-    QString monoWanted = installed.contains("DejaVu Sans Mono") ? QString("DejaVu Sans Mono")
-                                                               : QFontDatabase::systemFont(QFontDatabase::FixedFont).family();
-    if (!installed.contains(monoWanted) || monoWanted == serifWanted) {
-        monoWanted.clear();
-        for (const QString& f : installed)
-            if (f != serifWanted && QFontDatabase::isFixedPitch(f)) { monoWanted = f; break; }
-        if (monoWanted.isEmpty())
-            for (const QString& f : installed)
-                if (f != serifWanted) { monoWanted = f; break; }
-    }
-    CHECK(!monoWanted.isEmpty());
+    // Everything below comes from the picker's own rows (row 0 = Default, then the families it
+    // lists: it skips private ones, so QFontDatabase::families() is not the same set), and its rule:
+    // a row shows when its text contains the search text, case-insensitively. CI images have few fonts.
+    QStringList rowFamilies;
+    for (int i = 1; fonts && i < fonts->count(); ++i) rowFamilies << fonts->item(i)->data(Qt::UserRole).toString();
+    CHECK(!rowFamilies.isEmpty());
+    const QString serifWanted = rowFamilies.contains("DejaVu Serif") ? QString("DejaVu Serif") : rowFamilies.first();
+    QString monoWanted;
+    for (const QString& f : rowFamilies)
+        if (f != serifWanted && !f.contains(serifWanted, Qt::CaseInsensitive) && !serifWanted.contains(f, Qt::CaseInsensitive)
+            && QFontDatabase::isFixedPitch(f)) { monoWanted = f; break; }
+    if (monoWanted.isEmpty())
+        monoWanted = rowFamilies.contains("DejaVu Sans Mono") ? QString("DejaVu Sans Mono") : rowFamilies.last();
+    // What the picker should show and select for a search text, read from its rows as they are now.
+    auto expectFor = [&](const QString& needle, int& count, QString& firstFamily) {
+        count = 0;
+        firstFamily.clear();
+        bool found = false;
+        for (int i = 0; i < fonts->count(); ++i)
+            if (fonts->item(i)->text().contains(needle, Qt::CaseInsensitive)) {
+                if (!found) firstFamily = fonts->item(i)->data(Qt::UserRole).toString();
+                found = true;
+                ++count;
+            }
+    };
+    int shownWanted = 0, total = fonts->count();
+    QString titlePicked;
+    expectFor(serifWanted, shownWanted, titlePicked);
+    CHECK(shownWanted >= 1);
     typeText(QApplication::focusWidget(), serifWanted);
-    QString titlePicked = fonts->currentItem() ? fonts->currentItem()->text() : QString();
-    CHECK(titlePicked.contains(serifWanted, Qt::CaseInsensitive));
-    int visible = 0, shownWanted = 0;
+    QTest::qWait(200);
+    int visible = 0;
     for (int i = 0; i < fonts->count(); ++i) visible += !fonts->item(i)->isHidden();
-    for (const QString& f : installed) shownWanted += f.contains(serifWanted, Qt::CaseInsensitive);
-    CHECK(visible >= 1 && visible == shownWanted);
+    CHECK(visible == shownWanted);  // the filter shows exactly the matching rows
+    CHECK(visible <= total);
+    CHECK(fonts->currentItem() && !fonts->currentItem()->isHidden());
+    CHECK_EQ(fonts->currentItem()->data(Qt::UserRole).toString(), titlePicked);
+    CHECK_EQ(Theme::instance().titleFamily(), titlePicked);  // applied live
     shot(w, "8_font_picker");
     press(QApplication::focusWidget(), Qt::Key_Return);
     settle();
@@ -547,11 +562,15 @@ int main(int argc, char** argv) {
     typeText(QApplication::focusWidget(), serifWanted);
     press(QApplication::focusWidget(), Qt::Key_Tab);                        // title chosen, now body
     press(QApplication::focusWidget(), Qt::Key_A, Qt::ControlModifier);     // select the search text
+    fonts = w.findChild<FontPicker*>()->findChild<QListWidget*>();
+    QString bodyPicked;
+    expectFor(monoWanted, shownWanted, bodyPicked);  // row 0's text is per tab, so read it now
     typeText(QApplication::focusWidget(), monoWanted);
     QTest::qWait(200);
-    fonts = w.findChild<FontPicker*>()->findChild<QListWidget*>();
-    const QString bodyPicked = fonts->currentItem() ? fonts->currentItem()->text() : QString();
-    CHECK(bodyPicked.contains(monoWanted, Qt::CaseInsensitive));
+    visible = 0;
+    for (int i = 0; i < fonts->count(); ++i) visible += !fonts->item(i)->isHidden();
+    CHECK(shownWanted >= 1 && visible == shownWanted);
+    CHECK(fonts->currentItem() && fonts->currentItem()->data(Qt::UserRole).toString() == bodyPicked);
     CHECK_EQ(Theme::instance().bodyFamily(), bodyPicked);  // live preview
     press(QApplication::focusWidget(), Qt::Key_Return);
     settle();
@@ -947,6 +966,10 @@ int main(int argc, char** argv) {
         }
         // Ctrl+Shift+A cycles Pulse -> Constant -> Off -> Pulse.
         CHECK(nerv->mode() == NervPanel::Mode::Pulse);
+        // Constant animates only on the charger: the fake supply, plugged in, not this machine's.
+        put("ACAD/online", "1"); put("BAT1/status", "Charging");
+        qputenv("GRAPHITE_POWER_ROOT", ps.path().toUtf8());
+        nerv->refreshPower();
         trigger(w, "Ctrl+Shift+A");
         CHECK(nerv->mode() == NervPanel::Mode::Constant && nerv->isVisible());
         if (QApplication::activeWindow() == &w) {
@@ -954,7 +977,7 @@ int main(int argc, char** argv) {
             CHECK(nerv->animating());  // constant: keeps going while the window is active
         }
         // On battery, Constant drops to pulses (the field conserves internal power).
-        qputenv("GRAPHITE_POWER_ROOT", ps.path().toUtf8());  // the fake, discharging battery above
+        put("ACAD/online", "0"); put("BAT1/status", "Discharging");  // the fake battery, unplugged
         nerv->refreshPower();
         CHECK(!nerv->power().external);
         if (QApplication::activeWindow() == &w) {
