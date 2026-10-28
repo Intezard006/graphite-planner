@@ -38,9 +38,10 @@ esac
 
 # 1. The source tarball that makepkg will build from: this repository's HEAD plus MicroTeX's,
 #    joined into one tar (tar -A appends one archive to another), then compressed.
-git archive --format=tar --prefix="$SRC_NAME/" -o "$STAGE/$SRC_NAME.tar" HEAD
+#    CLAUDE.md (private development notes) never ships; of MicroTeX only what the build uses.
+git archive --format=tar --prefix="$SRC_NAME/" -o "$STAGE/$SRC_NAME.tar" HEAD -- . ':(exclude)CLAUDE.md'
 git -C third_party/microtex archive --format=tar --prefix="$SRC_NAME/third_party/microtex/" \
-    -o "$STAGE/microtex.tar" HEAD
+    -o "$STAGE/microtex.tar" HEAD -- LICENSE src res
 tar -Af "$STAGE/$SRC_NAME.tar" "$STAGE/microtex.tar"
 rm "$STAGE/microtex.tar"
 gzip -n "$STAGE/$SRC_NAME.tar"      # -n: no timestamp inside, so the same commit gives the same checksum
