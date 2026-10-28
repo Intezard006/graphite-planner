@@ -38,17 +38,17 @@
 #include <QTextEdit>
 #include <cstdio>
 
-#include "ui/blur.hpp"
-#include "ui/tasks.hpp"
+#include "desktop/blur.hpp"
+#include "planner/tasks.hpp"
 #include "ui/explorer.hpp"
-#include "ui/imageobject.hpp"
+#include "render/imageobject.hpp"
 #include "ui/mainwindow.hpp"
 #include "ui/nervpanel.hpp"
 #include "ui/outlinerview.hpp"
 #include "ui/overlay.hpp"
-#include "ui/palette.hpp"
+#include "desktop/palette.hpp"
 #include "ui/settingspage.hpp"
-#include "ui/updates.hpp"
+#include "desktop/updates.hpp"
 #include "ui/unitart.hpp"
 #include "ui/theme.hpp"
 #include "ui/thirdimpact.hpp"
@@ -2340,11 +2340,15 @@ int main(int argc, char** argv) {
         settle();
         CHECK(!w.scrapDay());
         QFile::remove(jp);
-        // F2: the field manual (offscreen: its address in the status line, no browser started).
+        // F2: the field manual (offscreen: its address in the status line, no browser started),
+        // the build folder's own copy, a complete page.
         trigger(w, "F2");
         settle();
         QLabel* state = w.findChild<QLabel*>("state");
-        CHECK(state && state->text().contains("claude.ai/artifact/"));
+        CHECK(state && state->text().endsWith("/field-manual.html"));
+        const QString manual = readFile(QCoreApplication::applicationDirPath() + "/field-manual.html");
+        CHECK(manual.startsWith("<!doctype html>") && manual.contains("<meta charset=\"utf-8\">"));
+        CHECK(manual.contains("Graphite Field Manual"));
     }
 
     // 55. /progress: a bar on a task, stepped with Alt+= / Alt+-; the task and its heading follow.

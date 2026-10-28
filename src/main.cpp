@@ -10,9 +10,9 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include "ui/blur.hpp"
+#include "desktop/blur.hpp"
 #include "ui/mainwindow.hpp"
-#include "ui/palette.hpp"
+#include "desktop/palette.hpp"
 #include "ui/theme.hpp"
 
 // Usage: graphite [options] [path/to/graph]
@@ -105,7 +105,7 @@ int main(int argc, char** argv) {
 
     if (graph.isEmpty() || !QFileInfo(graph).isDir()) graph = QSettings().value("graph").toString();
     if (graph.isEmpty() || !QFileInfo(graph).isDir())
-        graph = QFileDialog::getExistingDirectory(nullptr, "Choose your Logseq graph folder", QDir::homePath());
+        graph = QFileDialog::getExistingDirectory(nullptr, "Choose a folder for your notes", QDir::homePath());
     if (graph.isEmpty()) return 0;
 
     if (::socketpair(AF_UNIX, SOCK_STREAM, 0, g_signalFd) == 0) {

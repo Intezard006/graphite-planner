@@ -9,7 +9,7 @@
 #include <cmath>
 #include <cstdio>
 
-#include "ui/palette.hpp"
+#include "desktop/palette.hpp"
 
 using namespace graphite;
 

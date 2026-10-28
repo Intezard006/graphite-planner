@@ -15,6 +15,8 @@ jobs:
         run: pacman -Syu --noconfirm --needed base-devel cmake ninja qt6-base git ttf-dejavu
 
       - uses: actions/checkout@v4.2.2
+        with:
+          submodules: true   # third_party/microtex
 
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release

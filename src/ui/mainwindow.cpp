@@ -30,19 +30,19 @@
 #include <QUrl>
 #include <QVBoxLayout>
 
-#include "ui/blur.hpp"
-#include "ui/updates.hpp"
-#include "ui/glossary.hpp"
-#include "ui/essentials.hpp"
+#include "desktop/blur.hpp"
+#include "desktop/updates.hpp"
+#include "notes/glossary.hpp"
+#include "notes/essentials.hpp"
 #include "ui/explorer.hpp"
-#include "ui/operation.hpp"
-#include "ui/palette.hpp"
+#include "planner/operation.hpp"
+#include "desktop/palette.hpp"
 #include "ui/settingspage.hpp"
 #include "ui/unitart.hpp"
 #include "ui/nervpanel.hpp"
-#include "ui/progress.hpp"
-#include "ui/tasks.hpp"
-#include "ui/timetable.hpp"
+#include "planner/progress.hpp"
+#include "planner/tasks.hpp"
+#include "planner/timetable.hpp"
 #include "ui/outlinerview.hpp"
 #include "ui/overlay.hpp"
 #include "ui/theme.hpp"
@@ -2213,15 +2213,19 @@ void MainWindow::updateStatus() {
     stateLabel_->setStyleSheet(QString("color: rgb(%1,%2,%3);").arg(color.red()).arg(color.green()).arg(color.blue()));
 }
 
-// Delete the open page: after a yes, the file goes to the desktop Trash (restorable from the
-// file manager), or to the graph's logseq/.recycle/ (Logseq's own) when there is no Trash.
-// Links to the page elsewhere are left as they are, as Logseq does.
-// The tutorial: an interactive page on claude.ai (docs/field-manual.html in the source tree).
+// The tutorial: docs/field-manual.html, installed beside the program (share/graphite, or the app
+// bundle's Resources; a build folder has its own copy). Without one, the page on claude.ai.
 void MainWindow::openFieldManual() {
     static const QString kUrl = "https://claude.ai/artifact/GEaepPQjgFZquBB8ABLCy2";
     QSettings().setValue("manualHinted", true);
-    if (QGuiApplication::platformName() == "offscreen" || !QDesktopServices::openUrl(QUrl(kUrl))) {
-        flash("Field manual: " + kUrl, 8000);  // tests, or no browser to hand it to
+    const QString exe = QCoreApplication::applicationDirPath();
+    QUrl url(kUrl);
+    for (const QString& c : {exe + "/../share/graphite/field-manual.html",
+                             exe + "/../Resources/field-manual.html", exe + "/field-manual.html"})
+        if (QFileInfo::exists(c)) { url = QUrl::fromLocalFile(QFileInfo(c).canonicalFilePath()); break; }
+    const QString shown = url.isLocalFile() ? url.toLocalFile() : kUrl;
+    if (QGuiApplication::platformName() == "offscreen" || !QDesktopServices::openUrl(url)) {
+        flash("Field manual: " + shown, 8000);  // tests, or no browser to hand it to
         return;
     }
     flash("Field manual opened in the browser");

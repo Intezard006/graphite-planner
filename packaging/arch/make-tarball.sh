@@ -28,8 +28,22 @@ rm -rf "${STAGE:?}"
 rm -f "${OUT:?}/${REL_NAME:?}.tar.gz"
 mkdir -p "$STAGE"
 
-# 1. The source tarball that makepkg will build from.
-git archive --format=tar.gz --prefix="$SRC_NAME/" -o "$STAGE/$SRC_NAME.tar.gz" HEAD
+# MicroTeX is a git submodule, and git archive leaves submodules out: it must be checked out at
+# the commit this repository records (git submodule status prints "-" when it is missing, "+"
+# when it is at another commit).
+case "$(git submodule status third_party/microtex)" in
+    [-+U]*) echo "third_party/microtex is missing or not at the recorded commit. Run: git submodule update --init" >&2
+            exit 1 ;;
+esac
+
+# 1. The source tarball that makepkg will build from: this repository's HEAD plus MicroTeX's,
+#    joined into one tar (tar -A appends one archive to another), then compressed.
+git archive --format=tar --prefix="$SRC_NAME/" -o "$STAGE/$SRC_NAME.tar" HEAD
+git -C third_party/microtex archive --format=tar --prefix="$SRC_NAME/third_party/microtex/" \
+    -o "$STAGE/microtex.tar" HEAD
+tar -Af "$STAGE/$SRC_NAME.tar" "$STAGE/microtex.tar"
+rm "$STAGE/microtex.tar"
+gzip -n "$STAGE/$SRC_NAME.tar"      # -n: no timestamp inside, so the same commit gives the same checksum
 
 # 2. Safety check: the Evangelion art is copyrighted and must never ship.
 if tar -tzf "$STAGE/$SRC_NAME.tar.gz" | grep -E '(^|/)(unit0[0-9][^/]*\.png|src/ui/art/.*\.png)$'; then

@@ -3,10 +3,10 @@
 #include <QPainter>
 #include <cstdio>
 
-#include "ui/chem.hpp"
-#include "ui/molar.hpp"
+#include "chem/chem.hpp"
+#include "chem/molar.hpp"
 #include "ui/snippets.hpp"
-#include "ui/tex.hpp"
+#include "render/tex.hpp"
 
 using namespace graphite;
 static int failures = 0;

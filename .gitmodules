@@ -1,0 +1,5 @@
+[submodule "third_party/microtex"]
+	path = third_party/microtex
+	url = https://github.com/Intezard006/MicroTeX.git
+	branch = graphite
+	shallow = true

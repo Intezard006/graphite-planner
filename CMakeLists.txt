@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(graphite VERSION 0.25.0 LANGUAGES CXX)
+project(graphite VERSION 0.25.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -28,8 +28,16 @@ if(GRAPHITE_BUILD_UI)
     find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
     set(CMAKE_AUTOMOC ON)
 
-    # MicroTeX (MIT) typesets the formulas; tinyxml2 reads its font tables.
+    # MicroTeX (MIT) typesets the formulas; tinyxml2 reads its font tables. MicroTeX is a git
+    # submodule (our fork, branch graphite: one patch to the Qt backend); its samples and the
+    # Cairo / Skia / Windows backends are left out.
+    if(NOT EXISTS ${CMAKE_SOURCE_DIR}/third_party/microtex/src/latex.cpp)
+        message(FATAL_ERROR "third_party/microtex is empty. Fetch it with:\n"
+                            "  git submodule update --init\n"
+                            "(or clone with: git clone --recursive ...)")
+    endif()
     file(GLOB_RECURSE MICROTEX_SOURCES CONFIGURE_DEPENDS third_party/microtex/src/*.cpp)
+    list(FILTER MICROTEX_SOURCES EXCLUDE REGEX "/src/(samples|platform/(cairo|skia|gdi_win))/")
     add_library(microtex STATIC ${MICROTEX_SOURCES} third_party/tinyxml2/tinyxml2.cpp)
     target_include_directories(microtex PUBLIC third_party/microtex/src third_party/tinyxml2)
     target_compile_definitions(microtex PUBLIC BUILD_QT)
@@ -37,76 +45,83 @@ if(GRAPHITE_BUILD_UI)
     target_link_libraries(microtex PUBLIC Qt6::Gui)
     set_target_properties(microtex PROPERTIES POSITION_INDEPENDENT_CODE ON)
     if(NOT APPLE)
-        install(DIRECTORY third_party/microtex/res/ DESTINATION share/graphite/tex)
+        install(DIRECTORY third_party/microtex/res/ DESTINATION share/graphite/tex PATTERN SAMPLES.tex EXCLUDE)
     endif()
 
     add_library(graphite_ui STATIC
-        src/ui/blur.cpp
-        src/ui/blur.hpp
-        src/ui/calc.cpp
-        src/ui/calc.hpp
-        src/ui/labtable.cpp
-        src/ui/labtable.hpp
-        src/ui/oxidation.cpp
-        src/ui/oxidation.hpp
-        src/ui/graph.cpp
-        src/ui/graph.hpp
-        src/ui/glossary.cpp
-        src/ui/glossary.hpp
-        src/ui/balance.cpp
-        src/ui/balance.hpp
-        src/ui/updates.cpp
-        src/ui/updates.hpp
-        src/ui/chem.cpp
-        src/ui/chem.hpp
-        src/ui/essentials.cpp
-        src/ui/essentials.hpp
+        # Window, outliner, panels, theme
         src/ui/explorer.cpp
         src/ui/explorer.hpp
-        src/ui/graphindex.cpp
-        src/ui/graphindex.hpp
-        src/ui/tex.cpp
-        src/ui/unitart.cpp
-        src/ui/unitart.hpp
-        src/ui/tex.hpp
-        src/ui/imageobject.cpp
-        src/ui/imageobject.hpp
         src/ui/mainwindow.cpp
-        src/ui/mathobject.cpp
-        src/ui/mathobject.hpp
-        src/ui/molar.cpp
-        src/ui/molar.hpp
         src/ui/mainwindow.hpp
         src/ui/nervpanel.cpp
         src/ui/nervpanel.hpp
-        src/ui/operation.cpp
-        src/ui/operation.hpp
         src/ui/outlinerview.cpp
         src/ui/outlinerview.hpp
         src/ui/overlay.cpp
         src/ui/overlay.hpp
-        src/ui/palette.cpp
-        src/ui/palette.hpp
         src/ui/settingspage.cpp
         src/ui/settingspage.hpp
         src/ui/snippets.cpp
         src/ui/snippets.hpp
-        src/ui/tasks.cpp
-        src/ui/tasks.hpp
-        src/ui/timetable.cpp
-        src/ui/timetable.hpp
-        src/ui/progress.cpp
-        src/ui/progress.hpp
-        src/ui/thirdimpact.cpp
-        src/ui/thirdimpact.hpp
         src/ui/theme.cpp
         src/ui/theme.hpp
+        src/ui/thirdimpact.cpp
+        src/ui/thirdimpact.hpp
+        src/ui/unitart.cpp
+        src/ui/unitart.hpp
+        # Link index, definitions, Graphite Essentials
+        src/notes/essentials.cpp
+        src/notes/essentials.hpp
+        src/notes/glossary.cpp
+        src/notes/glossary.hpp
+        src/notes/graphindex.cpp
+        src/notes/graphindex.hpp
+        # Tasks, progress bars, timetable, timers
+        src/planner/operation.cpp
+        src/planner/operation.hpp
+        src/planner/progress.cpp
+        src/planner/progress.hpp
+        src/planner/tasks.cpp
+        src/planner/tasks.hpp
+        src/planner/timetable.cpp
+        src/planner/timetable.hpp
+        # Chemistry: \ce, molar masses, balancing, oxidation states
+        src/chem/balance.cpp
+        src/chem/balance.hpp
+        src/chem/chem.cpp
+        src/chem/chem.hpp
+        src/chem/molar.cpp
+        src/chem/molar.hpp
+        src/chem/oxidation.cpp
+        src/chem/oxidation.hpp
+        # Quick maths with units, lab tables, graphs
+        src/maths/calc.cpp
+        src/maths/calc.hpp
+        src/maths/graph.cpp
+        src/maths/graph.hpp
+        src/maths/labtable.cpp
+        src/maths/labtable.hpp
+        # Formulas (MicroTeX) and images inside the text
+        src/render/imageobject.cpp
+        src/render/imageobject.hpp
+        src/render/mathobject.cpp
+        src/render/mathobject.hpp
+        src/render/tex.cpp
+        src/render/tex.hpp
+        # Wallpaper colours, Hyprland blur, the update watcher
+        src/desktop/blur.cpp
+        src/desktop/blur.hpp
+        src/desktop/palette.cpp
+        src/desktop/palette.hpp
+        src/desktop/updates.cpp
+        src/desktop/updates.hpp
     )
     target_include_directories(graphite_ui PUBLIC src)
     target_link_libraries(graphite_ui PUBLIC graphite_core microtex Qt6::Widgets Qt6::Network)
     # Graphite Essentials: the pages every tree gets once (essentials.cpp).
-    qt_add_resources(graphite_ui "essentials" PREFIX "/essentials" BASE src/ui/essentials
-        FILES "src/ui/essentials/Lab tables.md" "src/ui/essentials/Graphs.md")
+    qt_add_resources(graphite_ui "essentials" PREFIX "/essentials" BASE src/notes/essentials
+        FILES "src/notes/essentials/Lab tables.md" "src/notes/essentials/Graphs.md")
     target_compile_definitions(graphite_ui PRIVATE GRAPHITE_VERSION_TEXT="${PROJECT_VERSION}")
     if(NOT GRAPHITE_PACKAGED)  # a package must not point into the folder it was built in
         target_compile_definitions(graphite_ui PRIVATE GRAPHITE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
@@ -119,6 +134,18 @@ if(GRAPHITE_BUILD_UI)
         find_library(IOKIT_FRAMEWORK IOKit REQUIRED)
         find_library(COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
         target_link_libraries(graphite_ui PUBLIC ${IOKIT_FRAMEWORK} ${COREFOUNDATION_FRAMEWORK})
+    endif()
+
+    # The field manual (F2) as a page that opens from disk: docs/field-manual.html is written for
+    # claude.ai, which adds the doctype and charset; the build copy gets them here.
+    file(READ ${CMAKE_SOURCE_DIR}/docs/field-manual.html GRAPHITE_MANUAL)
+    file(WRITE ${CMAKE_BINARY_DIR}/field-manual.html
+        "<!doctype html>\n<html lang=\"en\">\n<meta charset=\"utf-8\">\n"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
+        "${GRAPHITE_MANUAL}\n</html>\n")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/docs/field-manual.html)
+    if(NOT APPLE)
+        install(FILES ${CMAKE_BINARY_DIR}/field-manual.html DESTINATION share/graphite)
     endif()
 
     add_executable(graphite src/main.cpp)
@@ -146,7 +173,9 @@ if(GRAPHITE_BUILD_UI)
         add_custom_command(TARGET graphite POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/third_party/microtex/res
                     $<TARGET_BUNDLE_CONTENT_DIR:graphite>/Resources/tex
-            COMMENT "Copying the MicroTeX resources into the bundle")
+            COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/field-manual.html
+                    $<TARGET_BUNDLE_CONTENT_DIR:graphite>/Resources/field-manual.html
+            COMMENT "Copying the MicroTeX resources and the field manual into the bundle")
         install(TARGETS graphite BUNDLE DESTINATION .)
     else()
         install(TARGETS graphite RUNTIME DESTINATION bin)

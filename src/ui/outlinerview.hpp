@@ -20,9 +20,9 @@
 #include <vector>
 
 #include "core/document.hpp"
-#include "ui/glossary.hpp"
+#include "notes/glossary.hpp"
 #include "ui/snippets.hpp"
-#include "ui/tasks.hpp"
+#include "planner/tasks.hpp"
 
 class QPainter;
 class QTextDocument;

@@ -13,11 +13,11 @@
 #include <memory>
 
 #include "core/document.hpp"
-#include "ui/graphindex.hpp"
-#include "ui/palette.hpp"
+#include "notes/graphindex.hpp"
+#include "desktop/palette.hpp"
 #include "ui/nervpanel.hpp"
 #include "ui/outlinerview.hpp"
-#include "ui/tasks.hpp"
+#include "planner/tasks.hpp"
 
 class QLabel;
 class QStackedWidget;

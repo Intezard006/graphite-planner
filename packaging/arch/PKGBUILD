@@ -1,7 +1,7 @@
 # Maintainer: Graphite contributors
 # Build with:  makepkg -si   (run ./install.sh from the release folder, it does this for you)
 pkgname=graphite-planner
-pkgver=0.25.0
+pkgver=0.25.1
 pkgrel=1
 pkgdesc='Fast native day planner and notes outliner (Qt 6) with chemistry, maths and timetables'
 arch=('x86_64' 'aarch64')

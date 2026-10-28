@@ -8,18 +8,18 @@
 #include <cstdio>
 
 #include "core/document.hpp"
-#include "ui/graphindex.hpp"
-#include "ui/operation.hpp"
-#include "ui/tasks.hpp"
-#include "ui/timetable.hpp"
-#include "ui/graph.hpp"
-#include "ui/calc.hpp"
-#include "ui/balance.hpp"
-#include "ui/labtable.hpp"
-#include "ui/oxidation.hpp"
-#include "ui/progress.hpp"
-#include "ui/molar.hpp"
-#include "ui/updates.hpp"
+#include "notes/graphindex.hpp"
+#include "planner/operation.hpp"
+#include "planner/tasks.hpp"
+#include "planner/timetable.hpp"
+#include "maths/graph.hpp"
+#include "maths/calc.hpp"
+#include "chem/balance.hpp"
+#include "maths/labtable.hpp"
+#include "chem/oxidation.hpp"
+#include "planner/progress.hpp"
+#include "chem/molar.hpp"
+#include "desktop/updates.hpp"
 
 using namespace graphite;
 

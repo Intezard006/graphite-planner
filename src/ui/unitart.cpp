@@ -23,7 +23,7 @@
 #include <malloc.h>
 #endif
 
-#include "ui/palette.hpp"
+#include "desktop/palette.hpp"
 #include "ui/theme.hpp"
 
 namespace graphite {

@@ -21,9 +21,9 @@
 #include <QVBoxLayout>
 #include <cmath>
 
-#include "ui/mathobject.hpp"
-#include "ui/progress.hpp"
-#include "ui/tasks.hpp"
+#include "render/mathobject.hpp"
+#include "planner/progress.hpp"
+#include "planner/tasks.hpp"
 #include "ui/theme.hpp"
 
 namespace graphite {

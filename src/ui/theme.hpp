@@ -11,7 +11,7 @@
 #include <QObject>
 #include <QString>
 
-#include "ui/palette.hpp"
+#include "desktop/palette.hpp"
 
 namespace graphite {
 

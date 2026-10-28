@@ -17,8 +17,8 @@
 #include <QTextDocument>
 #include <QAbstractTextDocumentLayout>
 #include <QFontInfo>
-#include "ui/imageobject.hpp"
-#include "ui/mathobject.hpp"
+#include "render/imageobject.hpp"
+#include "render/mathobject.hpp"
 #include <QClipboard>
 #include <QLineEdit>
 #include <QLocale>
@@ -37,17 +37,17 @@
 #include <utility>
 #include <cmath>
 
-#include "ui/molar.hpp"
-#include "ui/operation.hpp"
+#include "chem/molar.hpp"
+#include "planner/operation.hpp"
 #include "ui/snippets.hpp"
-#include "ui/tasks.hpp"
-#include "ui/calc.hpp"
-#include "ui/balance.hpp"
-#include "ui/graph.hpp"
-#include "ui/glossary.hpp"
-#include "ui/labtable.hpp"
-#include "ui/oxidation.hpp"
-#include "ui/progress.hpp"
+#include "planner/tasks.hpp"
+#include "maths/calc.hpp"
+#include "chem/balance.hpp"
+#include "maths/graph.hpp"
+#include "notes/glossary.hpp"
+#include "maths/labtable.hpp"
+#include "chem/oxidation.hpp"
+#include "planner/progress.hpp"
 #include "ui/theme.hpp"
 
 namespace graphite {

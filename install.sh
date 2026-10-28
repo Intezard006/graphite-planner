@@ -107,6 +107,19 @@ if [ ${#missing[@]} -gt 0 ]; then
 fi
 
 # --------------------------------------------------------------------- 2. build
+# MicroTeX (the formula typesetter) is a git submodule: a clone made without --recursive has an
+# empty third_party/microtex. Fetch it (git submodule update --init downloads the recorded commit).
+if [ ! -f "$SRC/third_party/microtex/src/latex.cpp" ]; then
+    if [ -d "$SRC/.git" ] || [ -f "$SRC/.git" ]; then
+        say "Fetching MicroTeX (git submodule)"
+        git -C "$SRC" submodule update --init third_party/microtex
+    else
+        echo "third_party/microtex is empty and this is not a git checkout. Clone with:"
+        echo "  git clone --recursive https://github.com/Intezard006/graphite-planner.git"
+        exit 1
+    fi
+fi
+
 say "Building (Release)"
 cmake -S "$SRC" -B "$BUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release >/dev/null
 cmake --build "$BUILD"
