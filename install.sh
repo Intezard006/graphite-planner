@@ -53,11 +53,18 @@ find_old() {
     # Anything a previous run of this script recorded (exact file list from CMake).
     if [ -f "$SHARE/install-manifest.txt" ]; then
         while IFS= read -r f; do
-            [[ "$f" == "$SHARE"/* ]] && continue  # covered by removing $SHARE itself
+            [[ "$f" == "$SHARE"/* ]] && continue  # covered by the program files of $SHARE below
             [ -e "$f" ] && OLD_FILES+=("$f")
         done < "$SHARE/install-manifest.txt"
     fi
-    for d in "$SHARE" /usr/local/share/graphite; do [ -d "$d" ] && OLD_FILES+=("$d"); done
+    # The program's own files in share/graphite, never art/: the sidebar pictures you chose or
+    # downloaded live there (Graphite's data folder) and survive updates and uninstalling.
+    for d in "$SHARE" /usr/local/share/graphite; do
+        [ -d "$d" ] || continue
+        for f in "$d"/* "$d"/.[!.]*; do
+            [ -e "$f" ] && [ "$(basename "$f")" != art ] && OLD_FILES+=("$f")
+        done
+    done
     [ -e "$DESKTOP" ] && OLD_FILES+=("$DESKTOP")
     # Unique, in order.
     if [ ${#OLD_FILES[@]} -gt 0 ]; then
@@ -88,7 +95,7 @@ if [ "$UNINSTALL" = 1 ]; then
     say "This removes:"; printf '    %s\n' "${OLD_FILES[@]}"
     ask "Remove these files?" || { echo "Nothing changed."; exit 0; }
     remove_old
-    say "Graphite removed. Your notes and ~/.config/graphite were not touched."
+    say "Graphite removed. Your notes, ~/.config/graphite and your sidebar art ($SHARE/art) were not touched."
     exit 0
 fi
 

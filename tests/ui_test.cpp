@@ -2440,6 +2440,97 @@ int main(int argc, char** argv) {
         forgetUnitArt();
     }
 
+    // 57. Carryover: today's journal lists the open tasks of earlier journals (7 days by default),
+    // a group per day; the marker cycles the task in its own file (byte for byte), a finished one
+    // leaves with the flash, Ctrl+Enter over a row does the same; the switch and the range work.
+    {
+        Theme::instance().setImmersion(true);
+        QSettings().remove("tasks/carryover");
+        QSettings().remove("tasks/carryoverDays");
+        const QDate today = QDate::currentDate();
+        auto journal = [&](int ago) { return g + "/journals/" + today.addDays(-ago).toString("yyyy_MM_dd") + ".md"; };
+        const QString d2 = journal(2), d5 = journal(5), d9 = journal(9);
+        for (const QString& f : {d2, d5, d9}) CHECK(!QFileInfo::exists(f));
+        writeFile(d2, "- ## TODO Spectroscopy\n\t- TODO sub one\n\t- DONE sub two\n- DOING reading {progress 3/12}\n- DONE done one");
+        writeFile(d5, "- TODO old task\n- plain note");
+        writeFile(d9, "- TODO too old");
+        auto groupOf = [&](const QString& path) {
+            const auto& gs = view->carryover();
+            for (int i = 0; i < gs.size(); ++i)
+                if (gs[i].path == path) return i;
+            return -1;
+        };
+        CHECK(w.openPath(g + "/pages/Showcase.md"));
+        trigger(w, "Ctrl+J");
+        settle();
+        int g2 = groupOf(d2);
+        const int g5 = groupOf(d5);
+        CHECK(g2 >= 0 && g5 >= 0 && groupOf(d9) < 0);
+        CHECK(g5 < g2);  // the oldest day first
+        if (g2 >= 0 && g5 >= 0) {
+            const auto& a = view->carryover()[g2];
+            CHECK(a.blocks.size() == 3 && a.levels == QList<int>({0, 1, 0}));
+            CHECK(a.blocks.size() == 3 && a.blocks[2].second == "DOING reading 25%");  // a bar reads as its percentage
+            CHECK_EQ(a.note, QString("2 DAYS OPEN"));
+            CHECK(a.age == 2 && view->carryover()[g5].age == 5);
+            CHECK(!view->carryoverRect(g2, 1).isNull());
+        }
+        shot(w, "57_carryover");
+        CHECK(w.openPath(g + "/pages/Showcase.md"));
+        CHECK(view->carryover().isEmpty());  // only on today's journal
+        trigger(w, "Ctrl+J");
+        settle();
+
+        // The marker of "sub one": TODO -> DOING in its own journal, and its heading starts.
+        g2 = groupOf(d2);
+        QPoint m = view->carryoverMarkerPos(g2, 1);
+        CHECK(m.x() >= 0);
+        click(view->viewport(), m);
+        settle();
+        CHECK_EQ(readFile(d2), QString("- ## DOING Spectroscopy\n\t- DOING sub one\n\t- DONE sub two\n- DOING reading {progress 3/12}\n- DONE done one"));
+        // Again: DONE, the heading finishes and folds, both leave; the flash names the task.
+        g2 = groupOf(d2);
+        m = view->carryoverMarkerPos(g2, 1);
+        click(view->viewport(), m);
+        settle();
+        CHECK(readFile(d2).startsWith("- ## DONE Spectroscopy\n  collapsed:: true\n\t- DONE sub one\n"));
+        QLabel* state = w.findChild<QLabel*>("state");
+        CHECK(state && state->text().contains("Carried target neutralised") && state->text().contains("sub one"));
+        g2 = groupOf(d2);
+        CHECK(g2 >= 0 && view->carryover()[g2].blocks.size() == 1);
+        // Ctrl+Enter with the pointer on the row: DOING -> DONE, and the day's group is gone.
+        if (g2 >= 0) {
+            const QPoint c = view->carryoverRect(g2, 0).center();
+            QMouseEvent mv(QEvent::MouseMove, c, view->viewport()->mapToGlobal(c), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+            QApplication::sendEvent(view->viewport(), &mv);
+            press(view, Qt::Key_Return, Qt::ControlModifier);
+            settle();
+        }
+        CHECK(readFile(d2).contains("- DONE reading {progress 3/12}\n- DONE done one"));
+        CHECK(groupOf(d2) < 0);
+        CHECK(readFile(d5) == "- TODO old task\n- plain note");  // untouched
+
+        // Settings: the range (3 days: the 5-day-old one goes; All: the 9-day-old one comes), off.
+        auto reopen = [&] {
+            CHECK(w.openPath(g + "/pages/Showcase.md"));
+            trigger(w, "Ctrl+J");
+            settle();
+        };
+        QSettings().setValue("tasks/carryoverDays", 3);
+        reopen();
+        CHECK(groupOf(d5) < 0);
+        QSettings().setValue("tasks/carryoverDays", 0);
+        reopen();
+        CHECK(groupOf(d5) >= 0 && groupOf(d9) >= 0);
+        QSettings().setValue("tasks/carryover", false);
+        reopen();
+        CHECK(view->carryover().isEmpty());
+        QSettings().remove("tasks/carryover");
+        QSettings().remove("tasks/carryoverDays");
+        for (const QString& f : {d2, d5, d9}) QFile::remove(f);
+        reopen();
+    }
+
     // 8. Screenshots of a page that shows every kind of formatting.
     w.resize(1180, 760);
     CHECK(w.openPath(g + "/pages/Showcase.md"));

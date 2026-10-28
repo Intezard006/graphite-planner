@@ -336,6 +336,7 @@ void MainWindow::buildUi() {
     connect(view_, &OutlinerView::operationCommand, this, &MainWindow::onOperationCommand);
     connect(view_, &OutlinerView::message, this, [this](const QString& m) { flash(m); });
     connect(view_, &OutlinerView::tasksFinished, this, &MainWindow::announceFinished);
+    connect(view_, &OutlinerView::carryoverCycle, this, &MainWindow::cycleCarried);
     connect(view_, &OutlinerView::scrapRequested, this, [this] { scrapDay(); });
     applyTaskOptions();
     view_->setTodayTitle([this] { return journalTitle(QDate::currentDate()); });
@@ -594,13 +595,63 @@ void MainWindow::updatePatternBlue() {
         for (const Task& t : tasks) {
             if (t.scheduled != tomorrow && t.deadline != tomorrow) continue;
             const GraphIndex::Page& p = index_.pages()[t.page];
-            if (next.isEmpty() || next.back().path != p.path) next.append({p.title, p.path, {}});
+            if (next.isEmpty() || next.back().path != p.path) next.append({p.title, p.path, {}, {}, -1, {}});
             next.back().blocks.append({t.block, p.blocks[t.block]});
         }
     }
     const QString label = (Theme::instance().immersion() ? QString("Next episode") : QString("Tomorrow")) + "  \xC2\xB7  " +
                           QLocale::c().toString(today.addDays(1), "ddd d MMM");
     view_->setUpcoming(label, next);
+    updateCarryover(tasks, todayPage);
+}
+
+// Carryover: on today's journal, the open tasks left in earlier journals (Settings › Tasks: on,
+// and how many days back), a group per day. Shown, never copied: today's file is not touched.
+void MainWindow::updateCarryover(const QList<Task>& tasks, bool todayPage) {
+    QSettings s;
+    QList<OutlinerView::RefGroup> groups;
+    const bool eva = Theme::instance().immersion();
+    if (todayPage && s.value("tasks/carryover", true).toBool()) {
+        const QDate today = QDate::currentDate();
+        for (const CarriedTask& c : carryoverTasks(tasks, index_, today, s.value("tasks/carryoverDays", 7).toInt(), journalFormat_)) {
+            const Task& t = tasks[c.task];
+            const GraphIndex::Page& p = index_.pages()[t.page];
+            if (groups.isEmpty() || groups.back().path != p.path) {
+                OutlinerView::RefGroup g{QLocale::c().toString(c.day, "ddd d MMM"), p.path, {}, {}, -1, {}};
+                g.age = c.daysOpen;
+                g.note = c.daysOpen == 1 ? QString(eva ? "1 DAY OPEN" : "Yesterday")
+                                         : QString(eva ? "%1 DAYS OPEN" : "%1 days ago").arg(c.daysOpen);
+                groups.append(g);
+            }
+            // A progress bar reads as its percentage here; the row is otherwise the block as written.
+            QString text = p.blocks[t.block];
+            if (Progress pr; findProgress(text, &pr))
+                text = text.left(pr.at) + QString("%1%").arg(static_cast<int>(std::floor(pr.ratio() * 100 + 1e-9))) +
+                       text.mid(pr.at + pr.length);
+            groups.back().blocks.append({t.block, text});
+            groups.back().levels.append(t.level);
+        }
+    }
+    view_->setCarryover(eva ? QString("Carryover  \xC2\xB7  unresolved targets") : QString("Carried over"), groups);
+}
+
+// A carried task's marker was clicked (or Ctrl+Enter over it): cycle it in its own journal.
+void MainWindow::cycleCarried(QString path, int block) {  // by value: the row it came from is rebuilt meanwhile
+    const GraphIndex::Page* p = nullptr;
+    for (const GraphIndex::Page& q : index_.pages())
+        if (q.path == path) p = &q;
+    if (!p || block >= p->blocks.size()) return;
+    const QString before = p->blocks[block];  // the index's copy dies with the update below
+    const QString after = cycleTask(before);
+    if (!setBlockText(path, block, before, after)) {
+        flash("That task changed on disk; try again");
+        return;
+    }
+    if (taskMarker(after) == "DONE") {
+        const bool eva = Theme::instance().immersion();
+        flash((eva ? "Carried target neutralised  \xC2\xB7  " : "Done  \xC2\xB7  ") + taskTitle(after));
+        if (eva) nerv_->pulse(1400);
+    }
 }
 
 namespace {
@@ -1431,7 +1482,7 @@ void MainWindow::showReferences() {
     for (const GraphIndex::Reference& r : refs) {
         if (shown == kMaxShown) break;
         const GraphIndex::Page& p = index_.pages()[r.page];
-        if (groups.isEmpty() || groups.back().path != p.path) groups.append({p.title, p.path, {}});
+        if (groups.isEmpty() || groups.back().path != p.path) groups.append({p.title, p.path, {}, {}, -1, {}});
         groups.back().blocks.append({r.block, p.blocks[r.block]});
         ++shown;
     }
@@ -1642,6 +1693,32 @@ void MainWindow::showSettings() {
     onOff("Start headings", "tasks/start", "A TODO heading turns DOING once one of its subtasks is DOING or DONE");
     onOff("Fold finished", "tasks/fold", "A finished heading folds its subtasks away; it unfolds when reopened");
     onOff("Progress", "tasks/progress", "The count of done subtasks on each heading (SYNC 2/5)");
+    Row carry;
+    carry.name = "Carryover";
+    carry.choices = {"On", "Off"};
+    carry.get = [] { return QSettings().value("tasks/carryover", true).toBool() ? 0 : 1; };
+    carry.set = [this](int v) {
+        QSettings().setValue("tasks/carryover", v == 0);
+        updatePatternBlue();
+    };
+    carry.note = "Today's journal lists the tasks left open in earlier journals (shown, not copied)";
+    rows << carry;
+    Row range;
+    range.name = "Carryover from";
+    range.choices = {"3 days", "7 days", "14 days", "All"};
+    static const int kDays[] = {3, 7, 14, 0};
+    range.get = [] {
+        const int d = QSettings().value("tasks/carryoverDays", 7).toInt();
+        for (int i = 0; i < 4; ++i)
+            if (kDays[i] == d) return i;
+        return 1;
+    };
+    range.set = [this](int v) {
+        QSettings().setValue("tasks/carryoverDays", kDays[v]);
+        updatePatternBlue();
+    };
+    range.note = "How far back Carryover looks: journals of the last 3, 7 or 14 days, or every one";
+    rows << range;
 
     heading("Graph");
     Row folder;

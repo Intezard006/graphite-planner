@@ -41,6 +41,18 @@ struct Task {
 // (`journalFormat`: the journal file names, as in Logseq's config).
 QList<Task> collectTasks(const GraphIndex& index, const QString& journalFormat = "yyyy_MM_dd");
 
+// Carryover: the open tasks (TODO / DOING / NOW / LATER...) left in journals dated before
+// `today`, at most `days` days back (0: every past journal), dated or not. Each target brings
+// its open subtasks (level > 0); an open subtask of a finished heading is a target of its own.
+// Oldest day first, then in page order. `task`: an index into collectTasks' list.
+struct CarriedTask {
+    int task = -1;
+    QDate day;          // the journal it is in
+    int daysOpen = 0;   // today - day
+};
+QList<CarriedTask> carryoverTasks(const QList<Task>& tasks, const GraphIndex& index, const QDate& today, int days,
+                                  const QString& journalFormat = "yyyy_MM_dd");
+
 // Time blocks: a block whose first line starts with a time (after any task marker) is a slot in
 // the day: "09:00 TODO problem set", "TODO 14:00-15:30 lab", "16.30 call home". Minutes since
 // midnight; end is -1 without a range. `at`/`length`: where the time is in the text.

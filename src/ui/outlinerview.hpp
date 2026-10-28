@@ -138,12 +138,25 @@ public:
         QString title;
         QString path;
         QList<QPair<int, QString>> blocks;  // block index in that page, its raw text
-        bool operator==(const RefGroup& o) const { return path == o.path && title == o.title && blocks == o.blocks; }
+        // Carryover only: the note on the title row ("2 DAYS OPEN"), its age in days (tints the
+        // rows from 3 days on), and each row's subtask level (indents it).
+        QString note;
+        int age = -1;
+        QList<int> levels;
+        bool operator==(const RefGroup& o) const {
+            return path == o.path && title == o.title && blocks == o.blocks && note == o.note && age == o.age && levels == o.levels;
+        }
     };
     void setReferences(const QList<RefGroup>& groups, int total);
     // A section above the references (Next Episode: tasks for tomorrow); empty groups hide it.
     void setUpcoming(const QString& label, const QList<RefGroup>& groups);
     QRect upcomingRect(int group, int row) const;  // viewport coordinates, for tests
+    // Carryover, above it on today's journal: open tasks left in earlier journals, a group per
+    // day. Clicking a row's marker (or Ctrl+Enter over the row) asks for carryoverCycle.
+    void setCarryover(const QString& label, const QList<RefGroup>& groups);
+    QRect carryoverRect(int group, int row) const;      // viewport coordinates, for tests
+    QPoint carryoverMarkerPos(int group, int row) const;  // the middle of the row's marker word
+    const QList<RefGroup>& carryover() const { return carryover_; }
     int referenceCount() const { return refTotal_; }
     // Where a reference row is, in viewport coordinates (for tests); empty if none.
     QRect referenceRect(int group, int row) const;
@@ -172,6 +185,7 @@ signals:
     void referenceActivated(const QString& path, int block);  // block -1: the page itself
     void alertActivated();
     void taskActivated(const QString& path, int block);  // a row of an alert strip
+    void carryoverCycle(const QString& path, int block);  // a carried task's marker, in its own journal
     void operationCommand(const QString& args);
     void tasksFinished(const QStringList& names);
     void scrapRequested();  // "/scrap"  // headings that just turned DONE with their subtasks
@@ -199,7 +213,7 @@ private:
         std::unique_ptr<QTextDocument> doc;
     };
     struct RefItem {
-        int section = 1;  // 0: the upcoming section, 1: linked references
+        int section = 1;  // 0: the upcoming section, 1: linked references, 2: carryover
         int group = 0;    // index into that section's groups
         int row = -1;  // -1: the group's page title
         int y = 0, h = 0, textX = 0, textW = 0;
@@ -258,6 +272,7 @@ private:
     void restoreSnapshot(const std::string& to, std::vector<std::string>& other);
 
     bool selectionKey(QKeyEvent* e);        // keys while blocks are selected
+    bool carryoverKey(QKeyEvent* e);        // Ctrl+Enter over a carryover row
     std::vector<int> selectionRoots() const;  // selected blocks not inside another selected one
     void copySelection();
     void deleteSelection();
@@ -335,7 +350,10 @@ private:
         QList<std::pair<int, std::pair<std::string, std::string>>> blocks;  // block, {before, after}
     } lastCascade_;              // undone when the heading leaves DONE while still being edited
     QList<int> pendingFold_;     // finished headings around the block being edited: folded on leaving it
-    const QList<RefGroup>& groupsOf(int section) const { return section == 0 ? upcoming_ : refGroups_; }
+    const QList<RefGroup>& groupsOf(int section) const { return section == 0 ? upcoming_ : section == 2 ? carryover_ : refGroups_; }
+    QList<RefGroup> carryover_;
+    QString carryoverLabel_;
+    int carryTop_ = -1;  // content y of the carryover section
     QList<RefGroup> upcoming_;
     QString upcomingLabel_;
     int upcomingTop_ = -1, bottomTop_ = -1;  // content y of that section, and of everything below the blocks

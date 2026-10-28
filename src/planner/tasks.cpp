@@ -345,4 +345,39 @@ QList<Task> collectTasks(const GraphIndex& index, const QString& journalFormat) 
     return out;
 }
 
+QList<CarriedTask> carryoverTasks(const QList<Task>& tasks, const GraphIndex& index, const QDate& today, int days,
+                                  const QString& journalFormat) {
+    struct Chunk {
+        QDate day;
+        int block = 0;
+        QList<int> tasks;  // a target, then its subtasks (they follow it in collectTasks' list)
+    };
+    QList<Chunk> chunks;
+    QHash<int, QDate> dayOf;  // page -> its journal's day, or invalid
+    bool carrying = false;    // the current target was carried: its subtasks come too
+    for (int i = 0; i < tasks.size(); ++i) {
+        const Task& t = tasks[i];
+        if (t.level > 0) {
+            if (carrying) chunks.back().tasks << i;
+            continue;
+        }
+        carrying = false;
+        auto d = dayOf.find(t.page);
+        if (d == dayOf.end()) {
+            const GraphIndex::Page& p = index.pages()[t.page];
+            d = dayOf.insert(t.page, p.journal ? QDate::fromString(QFileInfo(p.path).completeBaseName(), journalFormat) : QDate());
+        }
+        if (!d->isValid() || *d >= today || (days > 0 && d->daysTo(today) > days)) continue;
+        chunks.append({*d, t.block, {i}});
+        carrying = true;
+    }
+    std::stable_sort(chunks.begin(), chunks.end(), [](const Chunk& a, const Chunk& b) {
+        return a.day != b.day ? a.day < b.day : a.block < b.block;
+    });
+    QList<CarriedTask> out;
+    for (const Chunk& c : chunks)
+        for (int i : c.tasks) out.append({i, c.day, static_cast<int>(c.day.daysTo(today))});
+    return out;
+}
+
 }  // namespace graphite

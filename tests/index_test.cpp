@@ -598,6 +598,49 @@ int main(int argc, char** argv) {
         CHECK(progressMessage("TODO Read {progress 3/12}", false).startsWith("25%"));
     }
 
+    // Carryover: open tasks of earlier journals within the range, dated or not, oldest day
+    // first, each target with its open subtasks; today's journal and pages never count.
+    {
+        QTemporaryDir cdir;
+        const QString j = cdir.path() + "/journals/";
+        write(j + "2026_10_20.md", "- TODO nine days old", 50);
+        write(j + "2026_10_22.md", "- TODO a week old", 50);
+        write(j + "2026_10_27.md",
+              "- ## TODO Heading\n\t- DONE closed sub\n\t- 18:00 TODO open sub\n- DOING started\n- LATER someday\n"
+              "- NOW now\n- DONE finished\n- CANCELED dropped\n- WAITING waiting\n- plain block\n"
+              "- TODO dated DEADLINE: <2026-11-05 Thu>\n- DONE done heading\n\t- TODO orphan sub",
+              50);
+        write(j + "2026_10_28.md", "- TODO yesterday {progress 3/12}", 50);
+        write(j + "2026_10_29.md", "- TODO today itself", 50);
+        write(j + "2026_10_30.md", "- TODO tomorrow", 50);
+        write(cdir.path() + "/pages/Page.md", "- TODO on a page", 50);
+        GraphIndex ci;
+        QList<GraphIndex::File> src;
+        for (const char* d : {"2026_10_20", "2026_10_22", "2026_10_27", "2026_10_28", "2026_10_29", "2026_10_30"})
+            src.append({j + d + ".md", d, true});
+        src.append({cdir.path() + "/pages/Page.md", "Page", false});
+        ci.sync(src);
+        const QList<Task> tasks = collectTasks(ci);
+        const QDate today(2026, 10, 29);
+        auto carried = [&](int days) {
+            QStringList out;
+            for (const CarriedTask& c : carryoverTasks(tasks, ci, today, days)) {
+                const Task& t = tasks[c.task];
+                out << QString("%1%2@%3/%4").arg(QString(t.level, '>'), t.text, c.day.toString("dd")).arg(c.daysOpen);
+            }
+            return out.join(" | ");
+        };
+        CHECK_EQ(carried(7),
+                 "a week old@22/7 | Heading@27/2 | >18:00 open sub@27/2 | started@27/2 | someday@27/2 | now@27/2 | "
+                 "waiting@27/2 | dated@27/2 | orphan sub@27/2 | yesterday 25%@28/1");
+        CHECK(carried(3).startsWith("Heading@27/2"));     // 7 days back is out of a 3-day range
+        CHECK(carried(1) == "yesterday 25%@28/1");
+        CHECK(carried(0).startsWith("nine days old@20/9 | a week old@22/7"));  // 0: every past journal
+        CHECK(!carried(0).contains("today itself") && !carried(0).contains("tomorrow") && !carried(0).contains("on a page"));
+        // the journal's date comes from its file name, in the graph's format
+        CHECK(carryoverTasks(tasks, ci, today, 7, "yyyy-MM-dd").isEmpty());
+    }
+
     if (failures == 0) std::printf("all index tests passed\n");
     return failures == 0 ? 0 : 1;
 }

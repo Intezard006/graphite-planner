@@ -177,6 +177,17 @@ main.lesson { display: grid; gap: 18px; min-width: 0; }
 .timeline .tr.now .t, .timeline .tr.now .w { color: var(--lcl); }
 .timeline .tr.donerow .w { color: var(--dim); text-decoration: line-through; }
 .refs { display: grid; gap: 10px; font-size: 13.5px; }
+.carry { display: grid; gap: 4px; font-size: 13.5px; }
+.carry .day { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; color: var(--struct); font-weight: 700; }
+.carry .day:first-child { margin-top: 0; }
+.carry .day .age { font: 700 10.5px/1.9 var(--mono); letter-spacing: .08em; color: var(--dim); }
+.carry .day.warm .age { color: var(--warm); }
+.carry .row { display: flex; gap: 6px; align-items: baseline; padding-left: 10px; border-left: 2px solid transparent; cursor: pointer; }
+.carry .row.sub { padding-left: 28px; }
+.carry .row.warm { border-left-color: var(--warm); }
+.carry .row:hover { background: color-mix(in srgb, var(--struct) 9%, transparent); }
+.carry .row .mk { cursor: pointer; }
+.carry .row .mk:hover { text-decoration: underline; }
 .refs .pg { color: var(--struct); font-weight: 700; }
 .refs .q { display: grid; grid-template-columns: 14px minmax(0, 1fr); }
 .refs .q::before { content: ""; width: 5px; height: 5px; border: 1px solid var(--dim); border-radius: 50%; margin-top: 8px; }
@@ -234,9 +245,9 @@ footer { margin-top: 44px; display: grid; gap: 8px; color: var(--faint); font-si
 
 <div class="wrap">
   <header class="top">
-    <div class="ruler"><span class="sq"></span><span class="label">Graphite</span><span class="label">Field manual · 0.24</span><span class="ticks"></span></div>
+    <div class="ruler"><span class="sq"></span><span class="label">Graphite</span><span class="label">Field manual · 0.26</span><span class="ticks"></span></div>
     <h1>First contact</h1>
-    <div class="caption">Ten drills, each with a working copy of the editor</div>
+    <div class="caption">Eleven drills, each with a working copy of the editor</div>
     <p><b>Type into it.</b> Nothing here touches your notes, and the keys are the ones Graphite uses. Press <kbd>F2</kbd> in Graphite to come back here.</p>
   </header>
   <div class="layout">
@@ -1242,6 +1253,17 @@ const DRILLS = [
     scrap: true,
     checks: [["Scrap the day (Ctrl+Shift+Backspace or /scrap)", s => s.flags.scrapped],
              ["Bring it back with Ctrl+Z", s => s.flags.restored]]},
+  {id: "carryover", name: "Carryover", title: "Carryover: what yesterday left",
+    intro: `<p>Tasks you didn't finish don't vanish into old journals. On today's journal, under the page, <b>Carryover</b> lists every open task (TODO, DOING, NOW, LATER) from the journals of the last 7 days, a group per day, oldest first, with how long each has been open. From three days on a task gets a warm edge.</p>
+      <ul><li><span>Nothing is copied: the tasks stay where you wrote them, and today's page is not touched.</span></li>
+      <li><span>Click a task's <b>marker</b> (or hold the pointer on it and press <kbd>Ctrl</kbd> <kbd>Enter</kbd>) to move it on in its own journal: TODO → DOING → DONE. A finished one leaves the list: <i>Carried target neutralised</i>.</span></li>
+      <li><span>Click the rest of the row to open the day it came from. Subtasks come with their heading, and a progress bar shows as its percentage.</span></li>
+      <li><span>Settings › Tasks turns it off or sets how far back it looks: 3, 7 or 14 days, or every journal.</span></li></ul>`,
+    blocks: () => [[0, "## Today"], [1, "09:00 TODO Problem set 5"], [1, "14:00 Physical chemistry lab"]],
+    side: "carry",
+    checks: [["Start a carried task (click its TODO)", s => s.flags.carriedStarted],
+             ["Finish one: it leaves the list", s => s.flags.carriedDone],
+             ["Open the day a task came from (click its text)", s => s.flags.carriedOpened]]},
   {id: "keys", name: "Every key", title: "Every key", keys: true}
 ];
 
@@ -1360,6 +1382,7 @@ function show(id) {
     if (all && !done.has(d.id)) { done.add(d.id); store.set("graphite-manual-done", [...done]); markRail(); s.flash(`Drill clear  ·  ${d.name}`); }
     if (d.side === "timeline") paintTimeline(extra, s);
     if (d.side === "refs") paintRefs(extra, s);
+    if (d.side === "carry") paintCarry(extra, s);
   };
   const ymd = `${today.getFullYear()}_${String(today.getMonth() + 1).padStart(2, "0")}_${String(today.getDate()).padStart(2, "0")}`;
   const opts = {blocks: d.blocks, onChange: update, kind: "Journal", title: journalTitle(today), path: `journals/${ymd}.md`, tools: [], progress: d.progress};
@@ -1388,6 +1411,38 @@ function paintRefs(el, s) {
   s.blocks.forEach(b => { for (const m of b.text.matchAll(/\[\[([^\]]+)\]\]|(?<![^\s(])#\[\[([^\]]+)\]\]|(?<![^\s(])#([^\s#\[\](),.;:!?"']+)/g)) { const n = m[1] || m[2] || m[3]; (refs[n] = refs[n] || []).push(b.text); } });
   const names = Object.keys(refs);
   el.innerHTML = `<div class="label">Linked references · ${names.length}</div><div class="refs">${names.length ? names.map(n => `<div><div class="pg">${esc(n)}</div>${refs[n].map(t => `<div class="q"><span>${inline(t)}</span></div>`).join("")}</div>`).join("") : `<span style="color:var(--dim)">Link a page and its references gather here.</span>`}</div>`;
+}
+// The drill's carryover: tasks left open in two earlier "journals", kept on the simulator.
+function paintCarry(el, s) {
+  const day = n => { const d = new Date(today); d.setDate(d.getDate() - n); return d.toLocaleDateString("en-GB", {weekday: "short", day: "numeric", month: "short"}).replace(",", ""); };
+  if (!s.carry) s.carry = [
+    {ago: 4, items: [{text: "TODO Lab report: kinetics", level: 0}, {text: "TODO Email the TA", level: 0}]},
+    {ago: 1, items: [{text: "## DOING Problem set 4", level: 0}, {text: "TODO Questions 5–8", level: 1}, {text: "TODO Read chapter 12 {progress 18/38 pages by 2}", level: 0}]}];
+  const groups = s.carry.filter(g => g.items.length);
+  const count = groups.reduce((n, g) => n + g.items.length, 0);
+  el.innerHTML = `<div class="label">Carryover · unresolved targets · ${count}</div><div class="carry">${groups.length ? groups.map((g, gi) => {
+    const warm = g.ago >= 3 ? " warm" : "";
+    return `<div class="day${warm}"><span>${esc(day(g.ago))}</span><span class="age">${g.ago === 1 ? "1 DAY OPEN" : g.ago + " DAYS OPEN"}</span></div>` +
+      g.items.map((it, i) => { const m = marker(it.text); return `<div class="row${warm}${it.level ? " sub" : ""}" data-g="${s.carry.indexOf(g)}" data-i="${i}"><span class="mk" data-mark="1">${m}</span><span>${esc(taskTitle(it.text).replace(/^#+\s*/, ""))}</span></div>`; }).join("");
+  }).join("") : `<span style="color:var(--dim)">Nothing carried over. A clean slate.</span>`}</div>`;
+  el.querySelectorAll(".row").forEach(row => row.addEventListener("click", e => {
+    const g = s.carry[+row.dataset.g], it = g.items[+row.dataset.i];
+    if (e.target.dataset.mark) {
+      it.text = cycleTask(it.text);
+      const m = marker(it.text);
+      if (m === "DOING") s.flags.carriedStarted = true;
+      if (m === "DONE") {
+        s.flags.carriedDone = true;
+        g.items = g.items.filter(x => x !== it);
+        s.flash(`Carried target neutralised  ·  ${taskTitle(it.text).replace(/^#+\s*/, "")}`);
+        pulseField();
+      }
+    } else {
+      s.flags.carriedOpened = true;
+      s.flash(`Opens the journal of ${day(g.ago)}`);
+    }
+    s.opts.onChange && s.opts.onChange(s);
+  }));
 }
 function route() { show((location.hash || "").slice(1)); window.scrollTo({top: 0, behavior: reduced ? "auto" : "smooth"}); }
 window.addEventListener("hashchange", route);

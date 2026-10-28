@@ -1753,12 +1753,21 @@ void OutlinerView::setUpcoming(const QString& label, const QList<RefGroup>& grou
     relayout();
 }
 
+void OutlinerView::setCarryover(const QString& label, const QList<RefGroup>& groups) {
+    if (label == carryoverLabel_ && groups == carryover_) return;
+    carryoverLabel_ = label;
+    carryover_ = groups;
+    hoverRef_ = -1;
+    buildReferences();
+    relayout();
+}
+
 void OutlinerView::buildReferences() {
     refItems_.clear();
     const Theme& th = Theme::instance();
     RichContext refContext;  // other pages: their terms are underlined, their equations are not numbered here
     refContext.glossary = rich_.glossary;
-    for (int section : {0, 1}) {
+    for (int section : {2, 0, 1}) {  // carryover, next episode, linked references
         const QList<RefGroup>& groups = groupsOf(section);
         for (int g = 0; g < groups.size(); ++g) {
             RefItem title;
@@ -1773,6 +1782,18 @@ void OutlinerView::buildReferences() {
                 it.doc = std::make_unique<QTextDocument>();
                 buildRich(it.doc.get(), groups[g].blocks[r].second, th, devicePixelRatioF(),
                           QFileInfo(groups[g].path).absolutePath(), &refContext);
+                if (section == 2) {  // a carried task's marker is a button: it cycles the task where it lives
+                    const QString marker = taskMarker(groups[g].blocks[r].second);
+                    if (!marker.isEmpty()) {
+                        QTextCursor m = it.doc->find(QRegularExpression("\\b" + marker + "\\b"));
+                        if (!m.isNull()) {
+                            QTextCharFormat f;
+                            f.setAnchor(true);
+                            f.setAnchorHref("graphite-carry:cycle");
+                            m.mergeCharFormat(f);
+                        }
+                    }
+                }
                 refItems_.push_back(std::move(it));
             }
         }
@@ -1784,6 +1805,31 @@ QRect OutlinerView::upcomingRect(int group, int row) const {
         if (it.section == 0 && it.group == group && it.row == row)
             return QRect(it.textX, it.y + kPadY - verticalScrollBar()->value(), it.textW, it.h);
     return QRect();
+}
+
+QRect OutlinerView::carryoverRect(int group, int row) const {
+    for (const RefItem& it : refItems_)
+        if (it.section == 2 && it.group == group && it.row == row)
+            return QRect(it.textX, it.y + kPadY - verticalScrollBar()->value(), it.textW, it.h);
+    return QRect();
+}
+
+QPoint OutlinerView::carryoverMarkerPos(int group, int row) const {
+    for (const RefItem& it : refItems_) {
+        if (it.section != 2 || it.group != group || it.row != row || !it.doc) continue;
+        for (QTextBlock b = it.doc->begin(); b.isValid(); b = b.next())
+            for (auto f = b.begin(); !f.atEnd(); ++f)
+                if (f.fragment().charFormat().anchorHref() == "graphite-carry:cycle") {
+                    const QTextLayout* lay = b.layout();
+                    const int pos = f.fragment().position() - b.position();
+                    const QTextLine line = lay->lineForTextPosition(pos);
+                    const qreal x0 = line.cursorToX(pos), x1 = line.cursorToX(pos + f.fragment().length());
+                    return QPoint(it.textX + static_cast<int>((x0 + x1) / 2),
+                                  it.y + kPadY + static_cast<int>(lay->position().y() + line.y() + line.height() / 2) -
+                                      verticalScrollBar()->value());
+                }
+    }
+    return QPoint(-1, -1);
 }
 
 QRect OutlinerView::referenceRect(int group, int row) const {
@@ -1808,6 +1854,8 @@ void OutlinerView::setDocument(Document* doc) {
     refGroups_.clear();
     upcoming_.clear();
     upcomingLabel_.clear();
+    carryover_.clear();
+    carryoverLabel_.clear();
     refItems_.clear();
     refTotal_ = 0;
     doc_ = doc;
@@ -2034,7 +2082,7 @@ void OutlinerView::relayout() {
         y += it.h + 2 * kPadY;
     }
 
-    refsTop_ = upcomingTop_ = bottomTop_ = -1;
+    refsTop_ = upcomingTop_ = carryTop_ = bottomTop_ = -1;
     if (!refItems_.empty()) {
         const int titleH = QFontMetrics(Theme::instance().bodyFont()).lineSpacing();
         int section = -1;
@@ -2042,11 +2090,12 @@ void OutlinerView::relayout() {
             if (it.section != section) {  // a section starts: air, then its label row
                 section = it.section;
                 y += 44;
-                (section == 0 ? upcomingTop_ : refsTop_) = y;
+                (section == 0 ? upcomingTop_ : section == 2 ? carryTop_ : refsTop_) = y;
                 if (bottomTop_ < 0) bottomTop_ = y;
                 y += 30;
             }
             it.textX = left + kGutter + (it.row < 0 ? 0 : kIndent / 2);
+            if (it.row >= 0 && it.section == 2) it.textX += kIndent / 2 * groupsOf(2)[it.group].levels.value(it.row);
             it.textW = qMax(80, left + colW - it.textX);
             if (it.row < 0 && it.group > 0) y += 12;  // air between pages
             it.y = y;
@@ -3084,18 +3133,21 @@ void OutlinerView::paintReferences(QPainter& p, int sy, int vh) {
     const int w = colW - kGutter;
 
     // Section label rows, in the header's language:  [] LINKED REFERENCES ---------- 3
-    int upcomingCount = 0;
+    int upcomingCount = 0, carryCount = 0;
     for (const RefGroup& g : upcoming_) upcomingCount += static_cast<int>(g.blocks.size());
-    for (int section : {0, 1}) {
-        const int top = section == 0 ? upcomingTop_ : refsTop_;
+    for (const RefGroup& g : carryover_) carryCount += static_cast<int>(g.blocks.size());
+    // How long a carried task has been open: warm from 3 days, LCL orange from a week.
+    auto ageColour = [&th](int age) { return age >= 7 ? QColor(0xff, 0x6a, 0x1a) : age >= 3 ? th.warm() : th.dim(); };
+    for (int section : {2, 0, 1}) {
+        const int top = section == 0 ? upcomingTop_ : section == 2 ? carryTop_ : refsTop_;
         if (top < 0 || top + 30 < sy || top > sy + vh) continue;
         const QFont label = th.labelFont();
         const QFontMetrics lm(label);
         const int rowY = top + 16;
-        const QString kind = section == 0 ? upcomingLabel_ : QString("Linked references");
-        const QString count = QString::number(section == 0 ? upcomingCount : refTotal_);
+        const QString kind = section == 0 ? upcomingLabel_ : section == 2 ? carryoverLabel_ : QString("Linked references");
+        const QString count = QString::number(section == 0 ? upcomingCount : section == 2 ? carryCount : refTotal_);
         p.setRenderHint(QPainter::Antialiasing, false);
-        p.fillRect(QRect(x, rowY - 8, 6, 6), section == 0 ? th.accent() : th.structure());
+        p.fillRect(QRect(x, rowY - 8, 6, 6), section == 0 ? th.accent() : section == 2 ? th.warm() : th.structure());
         p.setFont(label);
         p.setPen(th.dim());
         p.drawText(QPointF(x + 15, rowY), kind);
@@ -3123,12 +3175,22 @@ void OutlinerView::paintReferences(QPainter& p, int sy, int vh) {
             p.setBrush(tint);
             p.drawRoundedRect(QRectF(it.textX - 18, it.y, it.textW + 24, it.h + 2 * kPadY), 3, 3);
         }
+        const RefGroup& group = groupsOf(it.section)[it.group];
         if (it.row < 0) {
             p.setFont(titleFont);
             p.setPen(hot ? th.accent() : th.structure());
-            p.drawText(QRect(it.textX, it.y + kPadY, it.textW, it.h), Qt::AlignLeft | Qt::AlignVCenter,
-                       groupsOf(it.section)[it.group].title);
+            p.drawText(QRect(it.textX, it.y + kPadY, it.textW, it.h), Qt::AlignLeft | Qt::AlignVCenter, group.title);
+            if (!group.note.isEmpty()) {  // carryover: "2 DAYS OPEN" at the right, in its age's colour
+                p.setFont(th.labelFont());
+                p.setPen(ageColour(group.age));
+                p.drawText(QRect(it.textX, it.y + kPadY, it.textW, it.h), Qt::AlignRight | Qt::AlignVCenter, group.note);
+            }
             continue;
+        }
+        if (it.section == 2 && group.age >= 3) {  // an old carried task: a warm edge
+            p.setRenderHint(QPainter::Antialiasing, false);
+            p.fillRect(QRect(x - 6, it.y + 3, 2, it.h + 2 * kPadY - 6), ageColour(group.age));
+            p.setRenderHint(QPainter::Antialiasing, true);
         }
         double lineMid = 10;
         if (QTextLayout* lay = it.doc->firstBlock().layout(); lay && lay->lineCount() > 0)
@@ -3155,6 +3217,10 @@ void OutlinerView::mousePressEvent(QMouseEvent* e) {
         const RefGroup& g = groupsOf(it.section)[it.group];
         if (it.row >= 0) {
             const QString href = it.doc->documentLayout()->anchorAt(QPointF(cp.x() - it.textX, cp.y() - (it.y + kPadY)));
+            if (href == "graphite-carry:cycle") {
+                emit carryoverCycle(g.path, g.blocks[it.row].first);
+                return;
+            }
             if (!href.isEmpty()) {
                 emit linkActivated(href);
                 return;
@@ -3301,6 +3367,18 @@ void OutlinerView::leaveEvent(QEvent* e) {
 
 // --------------------------------------------------------------- keyboard
 
+// Ctrl+Enter with the pointer on a carryover row cycles that task (rows under the page take no
+// keyboard focus, so the pointer says which one).
+bool OutlinerView::carryoverKey(QKeyEvent* e) {
+    if (e->modifiers() != Qt::ControlModifier || (e->key() != Qt::Key_Return && e->key() != Qt::Key_Enter)) return false;
+    if (hoverRef_ < 0 || hoverRef_ >= static_cast<int>(refItems_.size())) return false;
+    const RefItem& it = refItems_[static_cast<size_t>(hoverRef_)];
+    if (it.section != 2 || it.row < 0) return false;
+    const RefGroup& g = carryover_[it.group];
+    emit carryoverCycle(g.path, g.blocks[it.row].first);
+    return true;
+}
+
 void OutlinerView::keyPressEvent(QKeyEvent* e) {
     if (doc_ && e->matches(QKeySequence::Undo)) {
         undo();
@@ -3310,6 +3388,7 @@ void OutlinerView::keyPressEvent(QKeyEvent* e) {
         redo();
         return;
     }
+    if (carryoverKey(e)) return;
     if (selectionKey(e)) return;
     // The view has focus (not the editor) and nothing is selected: arrows or Enter resume editing.
     if (doc_ && active_ < 0 && !items_.empty()) {
@@ -3658,6 +3737,7 @@ bool OutlinerView::eventFilter(QObject* obj, QEvent* ev) {
                 splitBlock();
                 return true;
             }
+            if (ctrl && carryoverKey(e)) return true;  // the pointer is on a carried task: that one
             if (ctrl) {  // TODO -> DOING -> DONE -> plain, as in Logseq
                 const QString before = editor_->toPlainText();
                 const QString after = cycleTask(before);

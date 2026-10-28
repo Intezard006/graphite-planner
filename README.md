@@ -16,8 +16,8 @@ and uses no CPU while idle, so it is easy on a laptop battery. Its look takes a 
 *Neon Genesis Evangelion*; one switch in Settings turns those off.
 
 - **Plan the day**: tasks (`TODO` / `DOING` / `DONE`), deadlines with countdowns, time blocks
-  with a timeline, a weekly timetable, subtasks that finish their heading, progress bars and
-  focus timers.
+  with a timeline, a weekly timetable, subtasks that finish their heading, unfinished tasks
+  carried over to today, progress bars and focus timers.
 - **Write science**: inline LaTeX (`$…$`) and chemistry (`\ce{…}`), molar masses, equation
   balancing, oxidation states, quick maths with units (`= 2.5 g / M(CuSO4) to mmol`), lab tables
   with worked-out columns, plots with fits and function graphs.

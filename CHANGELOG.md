@@ -3,6 +3,16 @@
 What changed in each version of Graphite. The [user guide](docs/guide.md) describes every
 feature in full.
 
+## 0.26.0
+
+- **Carryover**: today's journal lists the tasks left open in earlier journals (last 7 days by
+  default; 3, 14 or all in Settings › Tasks), a group per day, with how long each has been
+  open and a warm edge from three days on. Click a marker (or Ctrl+Enter over the row) to move
+  the task on in its own journal; click the row to open that day. Nothing is copied.
+- The installer no longer deletes your sidebar art (`~/.local/share/graphite/art`) when it
+  replaces or removes an older version.
+- Field manual: a Carryover drill.
+
 ## 0.25.1
 
 - **F2 opens the field manual from disk**: it is installed with Graphite (and inside the macOS

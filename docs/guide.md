@@ -179,6 +179,22 @@ written in today's journal (same time, same text) is shown once.
 **Subtasks**: a task indented (Tab) under another task is its subtask. The parent shows its
 sync ratio, `SYNC ▮▮▯▯▯ 2/5` (done subtasks count too), and its subtasks hang under it.
 
+**Carryover**: tasks left open in earlier journals are not lost in them. At the bottom of
+today's journal, *Carryover · unresolved targets* (*Carried over* without immersion) lists
+every open task (TODO, DOING, NOW, LATER, dated or not) from the journals of the last 7 days,
+a group per day, oldest first, with how long it has been open (`2 DAYS OPEN`). From three days
+on a task gets a warm edge; from a week, LCL orange. Subtasks come with their heading, and a
+progress bar shows as its percentage. Nothing is copied: the tasks stay where you wrote them,
+and today's file is not touched.
+
+- Click a task's **marker** (`TODO`), or hold the pointer on the row and press **Ctrl+Enter**,
+  to move it on in its own journal: TODO → DOING → DONE. Only that line of that file changes
+  (with the usual one-time backup), and its heading follows as usual. A finished task leaves
+  the list: *Carried target neutralised · name*.
+- Click the rest of the row to open the journal it came from, at that block.
+- Settings › Tasks › **Carryover** turns it off; **Carryover from** sets how far back it looks:
+  3, 7 or 14 days, or every journal.
+
 **Ctrl+Shift+T** (or Tasks in the sidebar)
 lists open tasks from every page under Overdue, Today, Upcoming and No date; type to filter,
 Enter jumps to the block, Ctrl+Enter marks it done right there (the page gets its usual

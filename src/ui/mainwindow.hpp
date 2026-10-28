@@ -68,6 +68,8 @@ public:
 
     // Settings › Tasks (QSettings tasks/finish|start|fold|progress, all on by default).
     TaskSyncOptions taskOptions() const;
+    void updateCarryover(const QList<Task>& tasks, bool todayPage);  // from updatePatternBlue
+    void cycleCarried(QString path, int block);  // by value (see the rule in loadPage)
     void applyTaskOptions();
     // Day scrap (Ctrl+Shift+Backspace, /scrap): the open journal wiped after a yes, under a
     // Third Impact with immersion; Ctrl+Z restores it, and a copy goes to .graphite/bak first.
