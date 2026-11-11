@@ -539,7 +539,7 @@ int main(int argc, char** argv) {
     expectFor(serifWanted, shownWanted, titlePicked);
     CHECK(shownWanted >= 1);
     typeText(QApplication::focusWidget(), serifWanted);
-    QTest::qWait(200);
+    QTest::qWaitFor([&] { return Theme::instance().titleFamily() == titlePicked; }, 3000);  // the 120 ms live preview
     int visible = 0;
     for (int i = 0; i < fonts->count(); ++i) visible += !fonts->item(i)->isHidden();
     CHECK(visible == shownWanted);  // the filter shows exactly the matching rows
@@ -566,7 +566,8 @@ int main(int argc, char** argv) {
     QString bodyPicked;
     expectFor(monoWanted, shownWanted, bodyPicked);  // row 0's text is per tab, so read it now
     typeText(QApplication::focusWidget(), monoWanted);
-    QTest::qWait(200);
+    // The live preview is a 120 ms single shot: wait for it, not a fixed time (slow CI runners).
+    QTest::qWaitFor([&] { return Theme::instance().bodyFamily() == bodyPicked; }, 3000);
     visible = 0;
     for (int i = 0; i < fonts->count(); ++i) visible += !fonts->item(i)->isHidden();
     CHECK(shownWanted >= 1 && visible == shownWanted);
