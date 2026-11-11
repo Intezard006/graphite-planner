@@ -465,6 +465,7 @@ void MainWindow::updateGlossary() {
 // and a count on the sidebar's Tasks row. Counted on page open, save and sync only.
 void MainWindow::updatePatternBlue() {
     updateGlossary();
+    finishPastExams();
     const QDate today = QDate::currentDate();
     int due = 0, overdue = 0, soon = 0;
     const QList<Task> tasks = collectTasks(index_, journalFormat_);
@@ -661,40 +662,31 @@ QString shortTaskText(QString line) {
     static const QRegularExpression marker(R"(^\s*(TODO|DOING|NOW|LATER|WAITING|WAIT|DONE|CANCELED|CANCELLED)\s+)");
     return line.section('\n', 0, 0).remove(noise).remove(marker).simplified();
 }
+// An exam as one short line: no time, marker, dates or #exam tag ("Quiz").
+QString examText(const QString& block) {
+    static const QRegularExpression tag(R"((^|\s)#(exam|\[\[exam\]\]))", QRegularExpression::CaseInsensitiveOption);
+    QString line = block.section('\n', 0, 0);
+    if (TimeSlot slot; blockTime(line, &slot)) line.remove(slot.at, slot.length);
+    return shortTaskText(line).remove(tag).simplified();
+}
 }  // namespace
 
-// The nearest exam: a block tagged #exam (or tags:: exam) with a SCHEDULED / DEADLINE date
-// from today on (its own, else the nearest block above it that has one), and not marked DONE.
-// Shown as a countdown in the NERV panel, named with the block it sits under:
+// The nearest exam (collectExams: #exam / tags:: exam, own date or its heading's) from today
+// on and not DONE: a countdown in the NERV panel, named with the block it sits under:
 // "Quiz #exam" under "Supramolecular Chemistry" is "Quiz · Supramolecular Chemistry".
 void MainWindow::updateExam() {
-    static const QRegularExpression tag(R"((^|\s)#(exam|\[\[exam\]\])(\s|$|[.,;:!?])|^\s*tags::.*\bexam\b)",
-                                        QRegularExpression::CaseInsensitiveOption | QRegularExpression::MultilineOption);
     const QDate today = QDate::currentDate();
     QDate best;
     QString what;
-    for (const GraphIndex::Page& p : index_.pages())
-        for (int bi = 0; bi < p.blocks.size(); ++bi) {
-            const QString& b = p.blocks[bi];
-            if (!b.contains("exam", Qt::CaseInsensitive) || !tag.match(b).hasMatch()) continue;
-            const QString marker = taskMarker(b);
-            if (marker == "DONE" || marker.startsWith("CANCEL")) continue;
-            // The blocks it sits under, nearest first.
-            QList<int> above;
-            for (int up = bi - 1, depth = bi < p.depths.size() ? p.depths[bi] : 0; up >= 0 && depth > 0; --up)
-                if (up < p.depths.size() && p.depths[up] < depth) {
-                    above << up;
-                    depth = p.depths[up];
-                }
-            QDate d = blockDue(b);
-            for (int k = 0; k < above.size() && !d.isValid(); ++k) d = blockDue(p.blocks[above[k]]);
-            if (!d.isValid() || d < today || (best.isValid() && d >= best)) continue;
-            best = d;
-            what = b.section('\n', 0, 0).trimmed();
-            if (!above.isEmpty())
-                if (const QString parent = shortTaskText(p.blocks[above[0]]); !parent.isEmpty())
-                    what += "  \xC2\xB7  " + parent;
-        }
+    for (const Exam& e : collectExams(index_)) {
+        if (e.done || e.date < today) continue;
+        const GraphIndex::Page& p = index_.pages()[e.page];
+        best = e.date;
+        what = p.blocks[e.block].section('\n', 0, 0).trimmed();
+        if (e.parent >= 0)
+            if (const QString parent = shortTaskText(p.blocks[e.parent]); !parent.isEmpty()) what += "  \xC2\xB7  " + parent;
+        break;
+    }
     const int days = best.isValid() ? static_cast<int>(today.daysTo(best)) : -1;
     nerv_->setExam(what, days);
     nerv_->setToolTip(what);
@@ -712,6 +704,44 @@ void MainWindow::updateExam() {
         s.setValue("ramiel/exam", nerv_->examName());
         s.setValue("ramiel/date", best.toString(Qt::ISODate));
     }
+}
+
+// Exams mark themselves DONE once over (examOver: the end of a range, else the start, else
+// the end of the day). Runs with updatePatternBlue, whose single-shot wake is set for the next
+// exam moment: no polling. An exam finished once and reopened by hand is left open
+// (QSettings exams/finished); one being typed in waits until the editor leaves it.
+void MainWindow::finishPastExams() {
+    if (finishingExams_ || graph_.isEmpty()) return;
+    QSettings s;
+    if (!s.value("tasks/examFinish", true).toBool()) return;
+    finishingExams_ = true;
+    const QDateTime now = QDateTime::currentDateTime();
+    QStringList known = s.value("exams/finished").toStringList();
+    QStringList names;
+    struct Due { QString path, text, key; int block; };
+    QList<Due> due;
+    for (const Exam& e : collectExams(index_)) {
+        if (e.done || examOver(e) > now) continue;
+        const GraphIndex::Page& p = index_.pages()[e.page];
+        const QString text = p.blocks[e.block];
+        const QString key = p.path + "|" + e.date.toString(Qt::ISODate) + "|" + shortTaskText(text);
+        if (known.contains(key)) continue;  // reopened by hand
+        if (page_ && page_->path == p.path && view_->activeBlock() == e.block) continue;
+        due << Due{p.path, text, key, e.block};
+    }
+    for (const Due& d : due)  // setBlockText re-reads the index: copies, not references
+        if (setBlockText(d.path, d.block, d.text, completeTask(d.text))) {
+            known << d.key;
+            names << examText(d.text);
+        }
+    if (!names.isEmpty()) {
+        while (known.size() > 200) known.removeFirst();
+        s.setValue("exams/finished", known);
+        const bool eva = Theme::instance().immersion();
+        flash(names.size() == 1 ? (eva ? "Target silenced  \xC2\xB7  " : "Exam done  \xC2\xB7  ") + names[0]
+                                : QString("%1 exams marked done").arg(names.size()));
+    }
+    finishingExams_ = false;
 }
 
 // Ramiel's moments, all novelty and all once at most: a beam when a deadline goes by undone
@@ -872,6 +902,11 @@ void MainWindow::updateNext() {
         break;
     }
     for (const TimetableEntry& e : todayTimetable()) consider({e.start, e.end}, e.text);
+    for (const Exam& e : collectExams(index_)) {  // today's timed exams on any page
+        if (e.date != QDate::currentDate() || e.done || e.slot.start < 0) continue;
+        if (index_.pages()[e.page].path == path) continue;  // counted with the journal
+        consider(e.slot, examText(index_.pages()[e.page].blocks[e.block]));
+    }
     nerv_->setNext(head, text);
 }
 
@@ -889,19 +924,24 @@ void MainWindow::showTimeline() {
     auto fetch = [this] {
         const QDate today = QDate::currentDate();
         const QString journal = graph_ + "/journals/" + today.toString(journalFormat_) + ".md";
-        QList<Row> rows;
-        for (const GraphIndex::Page& p : index_.pages()) {
+        QList<Row> rows, later;
+        const QList<Exam> exams = collectExams(index_);
+        QSet<qint64> examBlocks;
+        for (const Exam& e : exams) examBlocks.insert((qint64(e.page) << 32) | e.block);
+        const QVector<GraphIndex::Page>& pages = index_.pages();
+        for (int pi = 0; pi < pages.size(); ++pi) {
+            const GraphIndex::Page& p = pages[pi];
             const bool isToday = p.journal && p.path == journal;
             for (int bi = 0; bi < p.blocks.size(); ++bi) {
                 const QString& b = p.blocks[bi];
-                if (b.size() < 4) continue;
+                if (b.size() < 4 || examBlocks.contains((qint64(pi) << 32) | bi)) continue;
                 const QString marker = taskMarker(b);
                 const bool done = marker == "DONE" || marker.startsWith("CANCEL");
                 TimeSlot slot;
                 const bool timed = blockTime(b, &slot);
                 Row r;
                 QString line = b.section('\n', 0, 0);
-                if (timed && (isToday || (!marker.isEmpty() && blockDue(b) == today))) {
+                if (timed && (isToday || blockDue(b) == today)) {
                     r.start = slot.start;
                     r.end = slot.end;
                     line.remove(slot.at, slot.length);
@@ -928,6 +968,36 @@ void MainWindow::showTimeline() {
                 rows << r;
             }
         }
+        // Exams: today's in the day (untimed ones at the top, all day), every later one after.
+        const bool eva = Theme::instance().immersion();
+        for (const Exam& e : exams) {
+            if (e.date < today) continue;
+            const GraphIndex::Page& p = pages[e.page];
+            const QString& b = p.blocks[e.block];
+            Row r;
+            r.text = examText(b);
+            r.marker = eva ? "ANGEL" : "EXAM";
+            r.exam = true;
+            r.done = e.done;
+            r.start = e.slot.start;
+            r.end = e.slot.end;
+            r.path = p.path;
+            r.block = e.block;
+            r.blockText = b;
+            r.context = e.parent >= 0 ? shortTaskText(p.blocks[e.parent]) : p.title;
+            if (e.date == today) {
+                if (r.start < 0) r.when = "ALL DAY";
+                rows << r;
+            } else {
+                const qint64 days = today.daysTo(e.date);
+                r.day = e.date;
+                r.when = QLocale::c().toString(e.date, "d MMM").toUpper();
+                QString when = days == 1 ? QString("tomorrow") : QString("in %1 days").arg(days);
+                if (e.slot.start >= 0) when += "  \xC2\xB7  " + slotText(e.slot);
+                r.context = when + "  \xC2\xB7  " + r.context;
+                later << r;
+            }
+        }
         for (const TimetableEntry& e : todayTimetable()) {
             const GraphIndex::Page& p = index_.pages()[e.page];
             Row r;
@@ -944,7 +1014,7 @@ void MainWindow::showTimeline() {
         std::stable_sort(rows.begin(), rows.end(), [](const Row& a, const Row& b) {
             return a.start != b.start ? a.start < b.start : a.end < b.end;
         });
-        return rows;
+        return rows + later;  // later: in date order already
     };
     auto complete = [this](const Row& r) {
         return !r.weekly && setBlockText(r.path, r.block, r.blockText, completeTask(r.blockText));  // the timetable repeats
@@ -985,6 +1055,13 @@ void MainWindow::scheduleDeadlineWake(const QList<Task>& tasks) {
             const QDateTime at(now.date(), QTime(m / 60, m % 60, 1));
             if (at > now && at < next) next = at;
         }
+    for (const Exam& e : collectExams(index_)) {  // an exam starting, and when it is over
+        if (e.done || e.date != now.date() || e.slot.start < 0) continue;
+        const QDateTime starts(e.date, QTime(e.slot.start / 60, e.slot.start % 60, 1));
+        const QDateTime over = examOver(e).addSecs(1);
+        for (const QDateTime& at : {starts, over})
+            if (at > now && at < next) next = at;
+    }
     deadlineWake_.start(static_cast<int>(qMax<qint64>(1000, now.msecsTo(next))));
 }
 
@@ -1719,6 +1796,8 @@ void MainWindow::showSettings() {
     };
     range.note = "How far back Carryover looks: journals of the last 3, 7 or 14 days, or every one";
     rows << range;
+    onOff("Finish exams", "tasks/examFinish",
+          "An exam turns DONE once its time has passed (the end of a range, else its start; untimed: the next day)");
 
     heading("Graph");
     Row folder;

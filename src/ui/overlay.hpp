@@ -308,6 +308,9 @@ public:
         bool done = false;
         bool deadline = false;  // a DEADLINE with a time, not a time block
         bool weekly = false;    // from the timetable: it repeats, Ctrl+Enter leaves it
+        bool exam = false;      // tagged #exam: an EXAM chip instead of the marker
+        QDate day;              // set on exams of a later day (listed after today's rows)
+        QString when;           // the time column when not start/end ("ALL DAY", "18 NOV")
     };
     using Fetch = std::function<QList<Row>()>;  // in order
     using Complete = std::function<bool(const Row&)>;

@@ -642,5 +642,25 @@ int main(int argc, char** argv) {
     }
 
     if (failures == 0) std::printf("all index tests passed\n");
+    // Exams: own date or the heading's, time slot, done; examOver = end of range, start, end of day.
+    {
+        QTemporaryDir edir;
+        write(edir.path() + "/pages/Exams.md",
+              "- # Main Group SCHEDULED: <2026-11-02>\n\t- 17:00 Quiz #exam\n\t- 09:00-11:00 DONE Lab #[[exam]]\n"
+              "- Viva #exam DEADLINE: <2026-11-01 Sun>\n- undated #exam\n- examples #examples SCHEDULED: <2026-11-01>", 50);
+        GraphIndex ei;
+        ei.sync({{edir.path() + "/pages/Exams.md", "Exams", false}});
+        const QList<Exam> ex = collectExams(ei);
+        CHECK(ex.size() == 3);
+        if (ex.size() == 3) {
+            CHECK(ex[0].block == 3 && ex[0].date == QDate(2026, 11, 1) && ex[0].slot.start < 0 && ex[0].parent < 0);
+            CHECK(ex[1].block == 2 && ex[1].done && ex[1].slot.start == 9 * 60);  // 09:00 before 17:00
+            CHECK(ex[2].block == 1 && ex[2].date == QDate(2026, 11, 2) && ex[2].parent == 0 && !ex[2].done);
+            CHECK(examOver(ex[0]) == QDateTime(QDate(2026, 11, 2), QTime(0, 0)));
+            CHECK(examOver(ex[1]) == QDateTime(QDate(2026, 11, 2), QTime(11, 0)));
+            CHECK(examOver(ex[2]) == QDateTime(QDate(2026, 11, 2), QTime(17, 0)));
+        }
+    }
+
     return failures == 0 ? 0 : 1;
 }

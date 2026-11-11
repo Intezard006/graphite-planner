@@ -380,4 +380,47 @@ QList<CarriedTask> carryoverTasks(const QList<Task>& tasks, const GraphIndex& in
     return out;
 }
 
+bool isExamBlock(const QString& b) {
+    static const QRegularExpression tag(R"((^|\s)#(exam|\[\[exam\]\])(\s|$|[.,;:!?])|^\s*tags::.*\bexam\b)",
+                                        QRegularExpression::CaseInsensitiveOption | QRegularExpression::MultilineOption);
+    return b.contains("exam", Qt::CaseInsensitive) && tag.match(b).hasMatch();
+}
+
+QList<Exam> collectExams(const GraphIndex& index) {
+    QList<Exam> out;
+    const QVector<GraphIndex::Page>& pages = index.pages();
+    for (int pi = 0; pi < pages.size(); ++pi) {
+        const GraphIndex::Page& p = pages[pi];
+        for (int bi = 0; bi < p.blocks.size(); ++bi) {
+            const QString& b = p.blocks[bi];
+            if (!isExamBlock(b)) continue;
+            Exam e;
+            e.page = pi;
+            e.block = bi;
+            e.date = blockDue(b);
+            for (int up = bi - 1, depth = bi < p.depths.size() ? p.depths[bi] : 0; up >= 0 && depth > 0; --up)
+                if (up < p.depths.size() && p.depths[up] < depth) {
+                    if (e.parent < 0) e.parent = up;
+                    if (!e.date.isValid()) e.date = blockDue(p.blocks[up]);
+                    depth = p.depths[up];
+                }
+            if (!e.date.isValid()) continue;
+            if (!blockTime(b, &e.slot)) e.slot = TimeSlot();
+            const QString marker = taskMarker(b);
+            e.done = marker == "DONE" || marker.startsWith("CANCEL");
+            out << e;
+        }
+    }
+    std::stable_sort(out.begin(), out.end(), [](const Exam& a, const Exam& b) {
+        return a.date != b.date ? a.date < b.date : a.slot.start < b.slot.start;
+    });
+    return out;
+}
+
+QDateTime examOver(const Exam& e) {
+    const int m = e.slot.end >= 0 ? e.slot.end : e.slot.start;
+    if (m < 0) return QDateTime(e.date.addDays(1), QTime(0, 0));
+    return QDateTime(e.date, QTime(m / 60, m % 60));
+}
+
 }  // namespace graphite

@@ -153,10 +153,18 @@ task like any other (Ctrl+Enter, the Tasks list); in a journal, without a date o
 due that day, so it shows under Today.
 
 **Ctrl+D** opens today's timeline: every time block of the day (subtasks under a heading
-included, with the heading on the right), timed tasks scheduled today on other pages, and
+included, with the heading on the right), timed blocks scheduled today on other pages, and
 today's deadlines with a time (diamonds), in order. A line marks now and how long until the
 next one; half an hour or more between a block's end and the next start shows as free time.
 Enter jumps to the block, Ctrl+Enter marks it done (it stays, struck through).
+
+**Exams** (blocks tagged `#exam` or `tags:: exam`, dated by their own SCHEDULED / DEADLINE or
+by the heading they sit under) are in the timeline too, with a red EXAM chip and their heading
+on the right: today's at their time (*All day* without one), then *Upcoming exams*, every
+later exam up to the last, with how many days off it is. A timed exam dated today also feeds
+the NEXT row. Once an exam is over (the end of a range such as `10:00-12:00`, else its start
+time, else the end of its day) it marks itself DONE in its file, with a flash; reopen it by
+hand and it stays open. Settings › Tasks › **Finish exams** turns that off.
 
 **Ctrl+Shift+D** opens the week's timetable, `Graphite Essentials/Timetable` (a block per
 day to fill in). Write each lecture or lab under its day:

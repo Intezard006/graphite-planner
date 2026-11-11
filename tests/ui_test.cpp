@@ -1905,7 +1905,7 @@ int main(int argc, char** argv) {
                 int nowRows = 0;
                 for (int i = 0; i < list->count(); ++i) {
                     const int kind = list->item(i)->data(Qt::UserRole).toInt();
-                    if (kind == 0) order << list->item(i)->text() + "/" + list->item(i)->data(Qt::UserRole + 5).toString();
+                    if (kind == 0 && !list->item(i)->data(Qt::UserRole + 8).toBool()) order << list->item(i)->text() + "/" + list->item(i)->data(Qt::UserRole + 5).toString();
                     nowRows += kind == 1;
                 }
                 CHECK_EQ(order.join(" | "), "wake up/Supramolecular | the whole day/ | hand in the report/Hand in | Make notes/Supramolecular");
@@ -1943,7 +1943,7 @@ int main(int argc, char** argv) {
                 QListWidget* list = tt->findChild<QListWidget*>();
                 QStringList order;
                 for (int i = 0; i < list->count(); ++i)
-                    if (list->item(i)->data(Qt::UserRole).toInt() == 0)
+                    if (list->item(i)->data(Qt::UserRole).toInt() == 0 && !list->item(i)->data(Qt::UserRole + 8).toBool())
                         order << list->item(i)->text() + "/" + list->item(i)->data(Qt::UserRole + 5).toString();
                 CHECK_EQ(order.join(" | "), "Lecture block/Timetable | Every day too/Timetable | Late lecture/");
                 CHECK(list->currentItem() && list->currentItem()->text() == "Lecture block");
@@ -2529,6 +2529,67 @@ int main(int argc, char** argv) {
         QSettings().remove("tasks/carryoverDays");
         for (const QString& f : {d2, d5, d9}) QFile::remove(f);
         reopen();
+    }
+
+    // 58. Exams: the user's Exams page shape (headings, tab-indented timed quizzes, a date with
+    // no weekday, one dated by its heading). A past one turns DONE by itself (only that line);
+    // reopened by hand it stays open; Ctrl+D lists today's exams and every later one.
+    {
+        Theme::instance().setImmersion(false);
+        QSettings().remove("tasks/examFinish");
+        QSettings().remove("exams/finished");
+        const QDate today = QDate::currentDate();
+        const QString ex = g + "/pages/Exams.md";
+        auto day = [&](int n) { return today.addDays(n).toString("yyyy-MM-dd"); };
+        const QString past = "\t- 00:00 Quiz #exam SCHEDULED: <" + day(-1) + ">";
+        const QString text = "description:: Upcoming quizzes and exams.\n- # Supramolecular Chemistry\n\t- 00:00 DONE Quiz 1 #exam SCHEDULED: <" +
+                             day(-2) + " Sat>\n- # Main Group\n" + past + "\n- # POC SCHEDULED: <" + day(0) +
+                             ">\n\t- 23:59 Quiz #exam\n\t- Viva #exam\n- # Later\n\t- 10:00-12:00 Final #exam SCHEDULED: <" + day(3) + ">";
+        writeFile(ex, text);
+        reopenToday();
+        QString after = text;
+        after.replace(past, "\t- 00:00 DONE Quiz #exam SCHEDULED: <" + day(-1) + ">");
+        CHECK_EQ(readFile(ex), after);  // only that line; today's (23:59, all day) and later ones wait
+        CHECK(w.findChild<QLabel*>("state") && w.findChild<QLabel*>("state")->text().endsWith("Exam done  \u00B7  Quiz"));
+        // Reopened by hand: left open.
+        writeFile(ex, text);
+        reopenToday();
+        CHECK_EQ(readFile(ex), text);
+        // Ctrl+D: today's exams in the day, the later one after, with how far off it is.
+        trigger(w, "Ctrl+D");
+        settle();
+        if (TimelinePanel* tp = w.findChild<TimelinePanel*>(); tp) {
+            QListWidget* list = tp->findChild<QListWidget*>();
+            QStringList exams;
+            bool header = false;
+            for (int i = 0; i < list->count(); ++i) {
+                QListWidgetItem* it = list->item(i);
+                header = header || it->text() == "Upcoming exams";
+                if (it->data(Qt::UserRole + 8).toBool())
+                    exams << it->data(Qt::UserRole + 1).toString() + " " + it->text() + "/" + it->data(Qt::UserRole + 5).toString();
+            }
+            CHECK(header);
+            CHECK(exams.contains("ALL DAY Viva/POC"));
+            CHECK(exams.contains("23:59 Quiz/POC"));
+            if (QTime::currentTime() < QTime(23, 59)) CHECK(w.nervPanel()->nextText() == QString("Next  \u00B7  23:59 Quiz"));
+            const QString final3 = QLocale::c().toString(today.addDays(3), "d MMM").toUpper() + " Final/in 3 days  \u00B7  10:00\u201312:00  \u00B7  Later";
+            CHECK(exams.contains(final3) && exams.indexOf("23:59 Quiz/POC") < exams.indexOf(final3));
+            CHECK(!exams.join("|").contains("Main Group"));  // past
+            shot(w, "64_timeline_exams");
+            press(list, Qt::Key_Escape);
+            settle();
+        } else {
+            CHECK(false);
+        }
+        // The switch off: a past exam stays as written.
+        QSettings().setValue("tasks/examFinish", false);
+        QSettings().remove("exams/finished");
+        reopenToday();
+        CHECK_EQ(readFile(ex), text);
+        QSettings().remove("tasks/examFinish");
+        QSettings().remove("exams/finished");
+        QFile::remove(ex);
+        reopenToday();
     }
 
     // 8. Screenshots of a page that shows every kind of formatting.

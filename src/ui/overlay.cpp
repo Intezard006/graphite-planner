@@ -1162,7 +1162,8 @@ public:
         const QString marker = idx.data(Qt::UserRole + 4).toString();
         if (!marker.isEmpty()) {
             const bool active = marker == "DOING" || marker == "NOW";
-            const QColor chip = done ? th.faint() : active ? th.accent() : th.warm();
+            const bool exam = idx.data(Qt::UserRole + 8).toBool();
+            const QColor chip = done ? th.faint() : exam ? QColor(0xff4d4d) : active ? th.accent() : th.warm();
             const int chipW = lm.horizontalAdvance(marker) + 12;
             const QRectF chipR(x, cy - lm.height() / 2.0 - 1, chipW, lm.height() + 2);
             QColor fill = chip;
@@ -1179,7 +1180,7 @@ public:
         // Where it sits, on the right
         const QString context = idx.data(Qt::UserRole + 5).toString();
         if (!context.isEmpty()) {
-            const QString c = lm.elidedText(context, Qt::ElideRight, text.width() / 3);
+            const QString c = lm.elidedText(context, Qt::ElideRight, text.width() / (idx.data(Qt::UserRole + 8).toBool() ? 2 : 3));
             p->setFont(label);
             p->setPen(th.faint());
             p->drawText(text, Qt::AlignVCenter | Qt::AlignRight, c);
@@ -1247,12 +1248,21 @@ void TimelinePanel::reload() {
         item->setFlags(Qt::NoItemFlags);
         nowShown = true;
     };
+    bool laterShown = false, anyToday = false;
     for (int k = 0; k < rows_.size(); ++k) {
         const Row& r = rows_[k];
-        const bool isRunning = r.end > 0 && r.start <= now && now < r.end;
-        if (!nowShown && r.start > now) nowRow(r.start);
+        if (r.day.isValid() && !laterShown) {  // exams on later days, after today's rows
+            if (anyToday && !nowShown) nowRow(-1);
+            auto* head = new QListWidgetItem(Theme::instance().immersion() ? "Angels approaching" : "Upcoming exams", list_);
+            head->setData(Qt::UserRole, kGap);
+            head->setFlags(Qt::NoItemFlags);
+            laterShown = true;
+        }
+        anyToday = anyToday || !r.day.isValid();
+        const bool isRunning = !r.day.isValid() && r.end > 0 && r.start <= now && now < r.end;
+        if (!r.day.isValid() && !nowShown && r.start > now) nowRow(r.start);
         // Free time: after a block with an end, until the next one starts (half an hour or more).
-        if (k > 0 && rows_[k - 1].end > 0 && r.start - rows_[k - 1].end >= 30) {
+        if (k > 0 && !r.day.isValid() && rows_[k - 1].end > 0 && r.start - rows_[k - 1].end >= 30) {
             auto* gap = new QListWidgetItem(hoursText(r.start - rows_[k - 1].end) + "  free", list_);
             gap->setData(Qt::UserRole, kGap);
             gap->setFlags(Qt::NoItemFlags);
@@ -1262,21 +1272,23 @@ void TimelinePanel::reload() {
         TimeSlot s;
         s.start = r.start;
         s.end = r.end;
-        item->setData(Qt::UserRole + 1, slotText(s));
-        item->setData(Qt::UserRole + 2, isRunning ? 1 : r.start <= now ? 0 : 2);
+        item->setData(Qt::UserRole + 1, r.when.isEmpty() ? slotText(s) : r.when);
+        item->setData(Qt::UserRole + 2, isRunning ? 1 : r.day.isValid() || r.start < 0 || r.start > now ? 2 : 0);
+        item->setData(Qt::UserRole + 8, r.exam);
         item->setData(Qt::UserRole + 3, r.done);
         item->setData(Qt::UserRole + 4, r.marker);
         item->setData(Qt::UserRole + 5, r.context);
         item->setData(Qt::UserRole + 6, r.deadline);
         item->setData(Qt::UserRole + 7, k);
         if (isRunning) running = list_->count() - 1;
-        if (r.start > now && firstLater < 0) firstLater = list_->count() - 1;
+        if ((r.day.isValid() || r.start > now) && firstLater < 0) firstLater = list_->count() - 1;
     }
-    if (!rows_.isEmpty() && !nowShown) nowRow(-1);
-    if (rows_.isEmpty()) {
+    if (anyToday && !nowShown) nowRow(-1);
+    if (!anyToday) {
         auto* item = new QListWidgetItem("No times today. Start a block in today's journal with one: 09:00 TODO problem set", list_);
         item->setData(Qt::UserRole, kGap);
         item->setFlags(Qt::NoItemFlags);
+        list_->insertItem(0, list_->takeItem(list_->count() - 1));  // above any upcoming exams
     }
     // Start on what is running, else on what is next, else the last one.
     int start = keep >= 0 && keep < list_->count() && (list_->item(keep)->flags() & Qt::ItemIsSelectable) ? keep

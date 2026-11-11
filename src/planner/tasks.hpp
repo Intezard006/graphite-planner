@@ -113,4 +113,18 @@ QHash<int, QPair<int, int>> subtaskCounts(const QVector<int>& depths, const QStr
 QList<TaskEdit> syncTasks(Document& doc, const QList<int>& userChanged, const TaskSyncOptions& options,
                           QList<int>* finished = nullptr);
 
+// Exams: blocks tagged #exam, #[[exam]] or tags:: exam, dated by their own SCHEDULED /
+// DEADLINE, else by the nearest block above them that has one. Undated ones are left out.
+struct Exam {
+    int page = -1, block = -1;
+    int parent = -1;  // the block it sits under (e.g. the course heading), or -1
+    QDate date;
+    TimeSlot slot;    // slot.start -1: no time
+    bool done = false;  // DONE or CANCELED
+};
+bool isExamBlock(const QString& blockText);
+QList<Exam> collectExams(const GraphIndex& index);  // by date, then time (untimed first)
+// When an exam is over: the end of its range, else its start time, else the end of its day.
+QDateTime examOver(const Exam& exam);
+
 }  // namespace graphite

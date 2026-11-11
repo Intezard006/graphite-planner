@@ -3,6 +3,16 @@
 What changed in each version of Graphite. The [user guide](docs/guide.md) describes every
 feature in full.
 
+## 0.26.1
+
+- **Exams in the timeline**: Ctrl+D lists today's exams (a red EXAM chip, the course heading on
+  the right, *All day* when untimed) and every upcoming exam after them. Exams were missing
+  because the timeline only took timed blocks from other pages when they had a TODO marker;
+  now any timed block scheduled today shows.
+- **Exams finish themselves** once their time has passed (end of a range, else the start,
+  else the end of the day), one line rewritten, with a flash. Reopened by hand, an exam stays
+  open. Settings › Tasks › Finish exams. Today's timed exams also feed the NEXT row.
+
 ## 0.26.0
 
 - **Carryover**: today's journal lists the tasks left open in earlier journals (last 7 days by
