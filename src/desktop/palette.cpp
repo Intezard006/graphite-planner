@@ -116,40 +116,6 @@ PaletteColors unitPalette(const QString& id) {
     return p;
 }
 
-PaletteColors paletteFromMaterial(const QJsonObject& o, bool* ok) {
-    const QColor bg = parseHex(o.value("background"));
-    const QColor text = parseHex(o.value("on_surface"));
-    const QColor primary = parseHex(o.value("primary"));
-    if (ok) *ok = bg.isValid() && text.isValid() && primary.isValid();
-    if (!bg.isValid() || !text.isValid() || !primary.isValid()) return builtinPalette();
-
-    QColor tertiary = parseHex(o.value("tertiary"));
-    if (!tertiary.isValid()) tertiary = parseHex(o.value("secondary"));
-    if (!tertiary.isValid()) tertiary = primary;
-
-    PaletteColors p;
-    if (bg.lightnessF() < 0.45) {
-        // Dark scheme: use it as it is.
-        p.bg = bg;
-        const QColor low = parseHex(o.value("surface_container_low"));
-        p.panel = low.isValid() ? low : mixColors(bg, text, 0.04);
-        p.text = text;
-        p.accent = readable(primary);
-        p.structure = readable(tertiary, 0.64);
-    } else {
-        // Light scheme (matugen follows the desktop's light/dark setting): keep this app dark
-        // and borrow only the hues.
-        QColor seed = parseHex(o.value("source_color"));
-        if (!seed.isValid()) seed = primary;
-        darkSurfaces(p, hueOf(seed), 0.28);
-        p.accent = hsl(hueOf(primary), std::max<qreal>(0.55, primary.hslSaturationF()), 0.74);
-        p.structure = hsl(hueOf(tertiary), std::max<qreal>(0.45, tertiary.hslSaturationF()), 0.72);
-    }
-    p.warm = warmFrom(p.accent);
-    p.source = "matugen colours";
-    return p;
-}
-
 PaletteColors paletteFromPywal(const QJsonObject& wal, bool* ok) {
     const QJsonObject special = wal.value("special").toObject();
     const QJsonObject colors = wal.value("colors").toObject();
@@ -390,12 +356,7 @@ QString PaletteProvider::findWallpaper() const {
     const QString nerv = nervWallpaper();
     if (!nerv.isEmpty()) return nerv;
 
-    // Legacy ML4W / matugen sources (to be removed).
-    // ML4W keeps the path of the current wallpaper in a one-line cache file.
-    const QString ml4w = QString::fromUtf8(readSmall(home(".cache/ml4w/hyprland-dotfiles/current_wallpaper"))).trimmed();
-    if (!ml4w.isEmpty() && QFileInfo::exists(ml4w)) return ml4w;
-
-    // matugen's pywal-style file records the image it was made from.
+    // pywal's colors.json records the image it was made from.
     const QJsonObject wal = QJsonDocument::fromJson(readSmall(home(".cache/wal/colors.json"))).object();
     const QString fromWal = wal.value("wallpaper").toString();
     if (!fromWal.isEmpty() && QFileInfo::exists(fromWal)) return fromWal;
@@ -423,7 +384,7 @@ PaletteColors PaletteProvider::detect() {
         return p;
     }
 
-    // A NERV-HQ image wallpaper beats leftover matugen / pywal colour files.
+    // A NERV-HQ image wallpaper beats leftover pywal colour files.
     const QString nervImage = nervWallpaper();
     if (!nervImage.isEmpty()) {
         PaletteColors p = paletteFromImage(QImage(nervImage));
@@ -432,14 +393,6 @@ PaletteColors PaletteProvider::detect() {
     }
 
     bool ok = false;
-    const QString material = home(".config/ml4w/colors/colors.json");
-    if (QFileInfo::exists(material)) {
-        PaletteColors p = paletteFromMaterial(QJsonDocument::fromJson(readSmall(material)).object(), &ok);
-        if (ok) {
-            p.source = "matugen colours " + material;
-            return p;
-        }
-    }
     const QString walFile = home(".cache/wal/colors.json");
     if (QFileInfo::exists(walFile)) {
         const QJsonObject o = QJsonDocument::fromJson(readSmall(walFile)).object();
@@ -460,9 +413,8 @@ PaletteColors PaletteProvider::detect() {
 
 void PaletteProvider::rewatch() {
     const QString wallToml = nervWallTomlPath();
-    const QStringList files = {wallToml, home(".config/ml4w/colors/colors.json"), home(".cache/wal/colors.json"),
-                               home(".cache/ml4w/hyprland-dotfiles/current_wallpaper")};
-    const QStringList dirs = {QFileInfo(wallToml).absolutePath(), home(".config/ml4w/colors"), home(".cache/wal"), home(".cache/ml4w/hyprland-dotfiles")};
+    const QStringList files = {wallToml, home(".cache/wal/colors.json")};
+    const QStringList dirs = {QFileInfo(wallToml).absolutePath(), home(".cache/wal")};
     // Tools often replace a file instead of rewriting it, which drops the watch: add again.
     for (const QString& f : files)
         if (QFileInfo::exists(f) && !watcher_.files().contains(f)) watcher_.addPath(f);
@@ -483,11 +435,11 @@ void PaletteProvider::refresh() {
 }
 
 // The slow poll is only for wallpapers found through swww/awww/hyprpaper, which leave no file
-// to watch. Colour files (matugen, pywal) and fixed choices are covered by the watcher, so the
+// to watch. Colour files (pywal) and fixed choices are covered by the watcher, so the
 // app does not wake up every 20 s for nothing.
 void PaletteProvider::updatePoll() {
     const QString& s = current_.source;
-    const bool watched = s.startsWith("matugen") || s.startsWith("pywal");
+    const bool watched = s.startsWith("pywal");
     const bool fixed = !unit_.isEmpty() || !override_.isEmpty() || !qEnvironmentVariable("GRAPHITE_WALLPAPER").isEmpty();
 #ifdef Q_OS_MACOS
     const bool nothingToAsk = true;  // findWallpaper() asks no tool there, so a poll would find nothing

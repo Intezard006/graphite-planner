@@ -3,10 +3,9 @@
 // Order of preference (first that works wins):
 //   1. a wallpaper given on the command line / GRAPHITE_WALLPAPER   -> extracted here
 //   2. NERV-HQ's wallpaper state ($XDG_STATE_HOME/nerv/wall.toml, mode = "image") -> extracted here
-//   3. matugen's Material colours (~/.config/ml4w/colors/colors.json, legacy)
-//   4. pywal-style ~/.cache/wal/colors.json
-//   5. the wallpaper image found via hyprpaper / swww / awww (or ML4W's cache, legacy) -> extracted here
-//   6. the built-in violet-and-green palette
+//   3. pywal-style ~/.cache/wal/colors.json
+//   4. the wallpaper image found via pywal's recorded path, awww / swww or hyprpaper -> extracted here
+//   5. the built-in violet-and-green palette
 //
 // The app is always dark: a light colour scheme only lends its hues.
 #pragma once
@@ -55,7 +54,6 @@ QString unitName(const QString& id);  // "Unit-02"
 PaletteColors unitPalette(const QString& id);
 
 // Pure functions (unit tested). `ok` is set false when the input lacks what is needed.
-PaletteColors paletteFromMaterial(const QJsonObject& colors, bool* ok);   // matugen colors.json
 PaletteColors paletteFromPywal(const QJsonObject& wal, bool* ok);         // ~/.cache/wal/colors.json
 PaletteColors paletteFromImage(const QImage& image);                      // k-means on the picture
 // Wallpaper path out of `swww query`, `awww query` or `hyprctl hyprpaper listactive` output.

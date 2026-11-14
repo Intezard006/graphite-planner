@@ -13,7 +13,11 @@ feature in full.
   `nerv-focus` when that program is installed.
 - **NERV-HQ wallpaper**: the colours follow the image named in `$XDG_STATE_HOME/nerv/wall.toml`
   (`mode = "image"`) first and re-read when it changes. `mode = "live"` falls through to the
-  older sources; the ML4W / matugen paths remain only as last fallbacks.
+  older sources (pywal, then the wallpaper finders).
+- **ML4W support removed**: the old ML4W / matugen sources (`~/.config/ml4w/colors/colors.json`,
+  `~/.cache/ml4w/.../current_wallpaper`) and the Material-colour parser are gone. The colours now
+  come from `--wallpaper` / `GRAPHITE_WALLPAPER`, NERV `wall.toml`, pywal, then the wallpaper
+  found via awww / swww / hyprpaper, then the built-in palette.
 
 ## 0.26.1
 

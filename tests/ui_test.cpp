@@ -1447,8 +1447,8 @@ int main(int argc, char** argv) {
         CHECK(unitForColours(unitPalette("unit02")) == "unit02");
         CHECK(unitForColours(builtinPalette()) == "unit01");
         PaletteColors desk = builtinPalette();
-        desk.source = "matugen colours";
-        desk.accent = QColor("#adc6ff");      // the user's own matugen colours: blue-lilac
+        desk.source = "pywal colours";
+        desk.accent = QColor("#adc6ff");      // some desktop colours: blue-lilac
         desk.structure = QColor("#debcdf");
         std::printf("desktop colours -> %s\n", qPrintable(unitForColours(desk)));
         desk.accent = QColor("#9cff3c"); desk.structure = QColor("#9a6cff");  // violet / green

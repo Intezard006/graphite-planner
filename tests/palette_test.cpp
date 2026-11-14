@@ -1,4 +1,4 @@
-// Tests for the colour logic: Material (matugen), pywal, image extraction, tool output parsing.
+// Tests for the colour logic: pywal, image extraction, tool output parsing.
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
@@ -38,32 +38,7 @@ int main(int argc, char** argv) {
     qputenv("XDG_STATE_HOME", (fakeHome.path() + "/state").toUtf8());
     qunsetenv("GRAPHITE_WALLPAPER");
 
-    // 1. A dark matugen scheme is used as it is.
     bool ok = false;
-    PaletteColors dark = paletteFromMaterial(
-        json(R"({"background":"#141218","on_surface":"#e6e0e9","primary":"#d0bcff","tertiary":"#efb8c8",
-                 "surface_container_low":"#1d1b20","source_color":"#6750a4"})"), &ok);
-    CHECK(ok);
-    CHECK(dark.bg == QColor("#141218"));
-    CHECK(dark.panel == QColor("#1d1b20"));
-    CHECK(dark.text == QColor("#e6e0e9"));
-    CHECK(hueDiff(hue(dark.accent), hue(QColor("#d0bcff"))) < 3);
-    CHECK(dark.accent.lightnessF() >= 0.62);
-    CHECK(hueDiff(hue(dark.warm), 28) < 4);
-
-    // 2. A light scheme keeps the app dark and lends only its hue.
-    PaletteColors light = paletteFromMaterial(
-        json(R"({"background":"#fef7ff","on_surface":"#1d1b20","primary":"#6750a4","tertiary":"#7d5260",
-                 "source_color":"#6750a4"})"), &ok);
-    CHECK(ok);
-    CHECK(light.bg.lightnessF() < 0.12);
-    CHECK(light.text.lightnessF() > 0.85);
-    CHECK(hueDiff(hue(light.bg), hue(QColor("#6750a4"))) < 6);
-    CHECK(light.accent.lightnessF() > 0.6);
-
-    // 3. Missing keys: not ok, built-in colours come back.
-    PaletteColors bad = paletteFromMaterial(json(R"({"primary":"#ff0000"})"), &ok);
-    CHECK(!ok && bad == builtinPalette());
 
     // 4. pywal: the most saturated real colour becomes the accent.
     PaletteColors wal = paletteFromPywal(
@@ -155,7 +130,7 @@ int main(int argc, char** argv) {
         CHECK(wallpaperFromWallToml("mode = \"live\"\nimage = \"" + png + "\"\n").isEmpty());
         CHECK(wallpaperFromWallToml("mode = \"image\"\nimage = \"/no/such.png\"\n").isEmpty());
 
-        // Provider: no wall.toml and no ML4W dirs -> built-in; image mode -> that image; live -> built-in.
+        // Provider: no wall.toml and nothing else -> built-in; image mode -> that image; live -> built-in.
         auto writeToml = [&](const QString& text) {
             QDir().mkpath(fakeHome.path() + "/state/nerv");
             QFile f(nervWallTomlPath());
@@ -178,6 +153,37 @@ int main(int argc, char** argv) {
             PaletteProvider p3;
             p3.start();
             CHECK(!p3.describe().contains(png));
+        }
+
+        // Precedence: wall.toml image > pywal colours > (live) wallpaper finders; override beats all.
+        QDir().mkpath(fakeHome.path() + "/.cache/wal");
+        {
+            QFile f(fakeHome.path() + "/.cache/wal/colors.json");
+            CHECK(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+            f.write(R"({"special":{"background":"#0f1419","foreground":"#e6e1cf"},
+                        "colors":{"color1":"#ff3333","color2":"#33ff33","color4":"#3333ff","color5":"#909090"}})");
+        }
+        {
+            PaletteProvider p4;  // wall.toml is "live": pywal answers
+            p4.start();
+            CHECK(p4.describe().startsWith("pywal colours"));
+            CHECK(!p4.polling());
+        }
+        writeToml(good);
+        {
+            PaletteProvider p5;  // an NERV image wins over pywal
+            p5.start();
+            CHECK(p5.describe() == "wallpaper image " + png);
+        }
+        {
+            QImage blue(32, 32, QImage::Format_RGB32);
+            blue.fill(QColor(30, 30, 200));
+            const QString png2 = fakeHome.path() + "/other.png";
+            CHECK(blue.save(png2));
+            PaletteProvider p6;  // --wallpaper beats wall.toml
+            p6.setWallpaperOverride(png2);
+            p6.start();
+            CHECK(p6.describe() == "wallpaper image " + png2);
         }
     }
 
