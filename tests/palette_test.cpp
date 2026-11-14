@@ -31,6 +31,12 @@ static double hueDiff(double a, double b) {
 
 int main(int argc, char** argv) {
     QCoreApplication app(argc, argv);
+    // Never read the real home: HOME and XDG_STATE_HOME point into a temp dir.
+    QTemporaryDir fakeHome;
+    CHECK(fakeHome.isValid());
+    qputenv("HOME", fakeHome.path().toUtf8());
+    qputenv("XDG_STATE_HOME", (fakeHome.path() + "/state").toUtf8());
+    qunsetenv("GRAPHITE_WALLPAPER");
 
     // 1. A dark matugen scheme is used as it is.
     bool ok = false;
@@ -125,6 +131,55 @@ int main(int argc, char** argv) {
     provider.setBuiltinOnly(false);
     CHECK(!provider.builtinOnly());
     CHECK(changes <= 2);
+
+    // 11. NERV-HQ wall.toml parsing and precedence.
+    {
+        WallState a = parseWallToml("# c\nmode = \"image\"  # x\n  image='/a/b c.png'\n");
+        CHECK(a.mode == "image" && a.image == "/a/b c.png");
+        WallState b = parseWallToml("[wall]\r\nmode=live\r\nimage = \"\"\n");
+        CHECK(b.mode == "live" && b.image.isEmpty());
+        CHECK(parseWallToml("").mode.isEmpty());
+        CHECK(parseWallToml("garbage\nmode").mode.isEmpty());
+
+        CHECK(nervWallTomlPath() == fakeHome.path() + "/state/nerv/wall.toml");
+        qunsetenv("XDG_STATE_HOME");
+        CHECK(nervWallTomlPath() == fakeHome.path() + "/.local/state/nerv/wall.toml");
+        qputenv("XDG_STATE_HOME", (fakeHome.path() + "/state").toUtf8());
+
+        QImage red(32, 32, QImage::Format_RGB32);
+        red.fill(QColor(200, 30, 30));
+        const QString png = fakeHome.path() + "/wall.png";
+        CHECK(red.save(png));
+        const QString good = "mode = \"image\"\nimage = \"" + png + "\"\n";
+        CHECK(wallpaperFromWallToml(good) == png);
+        CHECK(wallpaperFromWallToml("mode = \"live\"\nimage = \"" + png + "\"\n").isEmpty());
+        CHECK(wallpaperFromWallToml("mode = \"image\"\nimage = \"/no/such.png\"\n").isEmpty());
+
+        // Provider: no wall.toml and no ML4W dirs -> built-in; image mode -> that image; live -> built-in.
+        auto writeToml = [&](const QString& text) {
+            QDir().mkpath(fakeHome.path() + "/state/nerv");
+            QFile f(nervWallTomlPath());
+            CHECK(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+            f.write(text.toUtf8());
+        };
+        {
+            PaletteProvider p1;
+            p1.start();
+            CHECK(!p1.describe().contains(png));
+        }
+        writeToml(good);
+        {
+            PaletteProvider p2;
+            p2.start();
+            CHECK(p2.describe() == "wallpaper image " + png);
+        }
+        writeToml("mode = \"live\"\n");
+        {
+            PaletteProvider p3;
+            p3.start();
+            CHECK(!p3.describe().contains(png));
+        }
+    }
 
     if (failures == 0) std::printf("all palette tests passed\n");
     return failures == 0 ? 0 : 1;

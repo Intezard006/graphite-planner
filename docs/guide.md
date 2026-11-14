@@ -387,9 +387,10 @@ definitions.
 
 ## Colours
 
-Graphite follows your wallpaper. It looks, in order, at `~/.config/ml4w/colors/colors.json`,
-`~/.cache/wal/colors.json`, then the wallpaper picture itself (found through ML4W's
-`current_wallpaper`, `awww`/`swww`, or hyprpaper) and falls back to built-in violet and green.
+Graphite follows your wallpaper. It looks, in order, at the NERV-HQ wallpaper
+(`$XDG_STATE_HOME/nerv/wall.toml` when it says `mode = "image"`), the older
+`~/.config/ml4w/colors/colors.json` and `~/.cache/wal/colors.json`, then the wallpaper picture itself
+(found through ML4W's `current_wallpaper`, `awww`/`swww`, or hyprpaper) and falls back to built-in violet and green.
 It re-reads when the wallpaper changes. `graphite --palette-info` shows what it picked;
 `--wallpaper FILE` and `--palette builtin` override it.
 Ctrl+P switches between the wallpaper colours and the original violet and green, and

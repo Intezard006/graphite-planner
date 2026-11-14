@@ -2,10 +2,11 @@
 //
 // Order of preference (first that works wins):
 //   1. a wallpaper given on the command line / GRAPHITE_WALLPAPER   -> extracted here
-//   2. matugen's Material colours (ML4W writes ~/.config/ml4w/colors/colors.json)
-//   3. pywal-style ~/.cache/wal/colors.json
-//   4. the wallpaper image found via ML4W / hyprpaper / swww / awww  -> extracted here
-//   5. the built-in violet-and-green palette
+//   2. NERV-HQ's wallpaper state ($XDG_STATE_HOME/nerv/wall.toml, mode = "image") -> extracted here
+//   3. matugen's Material colours (~/.config/ml4w/colors/colors.json, legacy)
+//   4. pywal-style ~/.cache/wal/colors.json
+//   5. the wallpaper image found via hyprpaper / swww / awww (or ML4W's cache, legacy) -> extracted here
+//   6. the built-in violet-and-green palette
 //
 // The app is always dark: a light colour scheme only lends its hues.
 #pragma once
@@ -59,6 +60,17 @@ PaletteColors paletteFromPywal(const QJsonObject& wal, bool* ok);         // ~/.
 PaletteColors paletteFromImage(const QImage& image);                      // k-means on the picture
 // Wallpaper path out of `swww query`, `awww query` or `hyprctl hyprpaper listactive` output.
 QString wallpaperFromToolOutput(const QString& output);
+
+// NERV-HQ wallpaper state: wall.toml holds `mode = "live"|"image"` and `image = "/abs/path"`.
+// Minimal hand parser (comments, whitespace, single or double quotes tolerated).
+struct WallState {
+    QString mode, image;
+};
+WallState parseWallToml(const QString& text);
+// The image named by a wall.toml's text, or "" when mode is not "image" or the file is missing.
+QString wallpaperFromWallToml(const QString& text);
+// $XDG_STATE_HOME/nerv/wall.toml (fallback ~/.local/state/nerv/wall.toml).
+QString nervWallTomlPath();
 
 class PaletteProvider : public QObject {
     Q_OBJECT

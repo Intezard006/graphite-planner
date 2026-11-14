@@ -3,6 +3,12 @@
 What changed in each version of Graphite. The [user guide](docs/guide.md) describes every
 feature in full.
 
+## Unreleased
+
+- **NERV-HQ wallpaper**: the colours follow the image named in `$XDG_STATE_HOME/nerv/wall.toml`
+  (`mode = "image"`) first and re-read when it changes. `mode = "live"` falls through to the
+  older sources; the ML4W / matugen paths remain only as last fallbacks.
+
 ## 0.26.1
 
 - **Exams in the timeline**: Ctrl+D lists today's exams (a red EXAM chip, the course heading on

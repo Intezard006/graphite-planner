@@ -308,11 +308,52 @@ QString wallpaperFromToolOutput(const QString& output) {
     return QString();
 }
 
+WallState parseWallToml(const QString& text) {
+    WallState st;
+    const QStringList lines = text.split('\n');
+    for (QString line : lines) {
+        line = line.trimmed();
+        if (line.isEmpty() || line.startsWith('#') || line.startsWith('[')) continue;
+        const int eq = line.indexOf('=');
+        if (eq < 0) continue;
+        const QString key = line.left(eq).trimmed();
+        QString val = line.mid(eq + 1).trimmed();
+        if (val.size() >= 1 && (val[0] == '"' || val[0] == '\'')) {
+            const int end = val.indexOf(val[0], 1);  // closing quote; anything after is a comment
+            val = end < 0 ? val.mid(1) : val.mid(1, end - 1);
+        } else {
+            const int hash = val.indexOf('#');
+            if (hash >= 0) val = val.left(hash).trimmed();
+        }
+        if (key == "mode") st.mode = val;
+        else if (key == "image") st.image = val;
+    }
+    return st;
+}
+
+QString wallpaperFromWallToml(const QString& text) {
+    const WallState st = parseWallToml(text);
+    if (st.mode != "image" || st.image.isEmpty()) return QString();
+    return QFileInfo::exists(st.image) ? st.image : QString();
+}
+
+QString nervWallTomlPath() {
+    QString base = qEnvironmentVariable("XDG_STATE_HOME");
+    if (base.isEmpty() || !QDir::isAbsolutePath(base)) base = QDir::homePath() + "/.local/state";
+    return base + "/nerv/wall.toml";
+}
+
 // ------------------------------------------------------------------ provider
 
 namespace {
 
 QString home(const QString& rel) { return QDir::homePath() + "/" + rel; }
+
+QString nervWallpaper() {
+    QFile f(nervWallTomlPath());
+    if (!f.open(QIODevice::ReadOnly)) return QString();
+    return wallpaperFromWallToml(QString::fromUtf8(f.read(1 << 16)));
+}
 
 QByteArray readSmall(const QString& path) {
     QFile f(path);
@@ -345,6 +386,11 @@ PaletteProvider::PaletteProvider(QObject* parent) : QObject(parent) {
 }
 
 QString PaletteProvider::findWallpaper() const {
+    // NERV-HQ: wall.toml first. "live" (procedural, no file) or a missing image falls through.
+    const QString nerv = nervWallpaper();
+    if (!nerv.isEmpty()) return nerv;
+
+    // Legacy ML4W / matugen sources (to be removed).
     // ML4W keeps the path of the current wallpaper in a one-line cache file.
     const QString ml4w = QString::fromUtf8(readSmall(home(".cache/ml4w/hyprland-dotfiles/current_wallpaper"))).trimmed();
     if (!ml4w.isEmpty() && QFileInfo::exists(ml4w)) return ml4w;
@@ -377,6 +423,14 @@ PaletteColors PaletteProvider::detect() {
         return p;
     }
 
+    // A NERV-HQ image wallpaper beats leftover matugen / pywal colour files.
+    const QString nervImage = nervWallpaper();
+    if (!nervImage.isEmpty()) {
+        PaletteColors p = paletteFromImage(QImage(nervImage));
+        p.source = "wallpaper image " + nervImage;
+        return p;
+    }
+
     bool ok = false;
     const QString material = home(".config/ml4w/colors/colors.json");
     if (QFileInfo::exists(material)) {
@@ -405,9 +459,10 @@ PaletteColors PaletteProvider::detect() {
 }
 
 void PaletteProvider::rewatch() {
-    const QStringList files = {home(".config/ml4w/colors/colors.json"), home(".cache/wal/colors.json"),
+    const QString wallToml = nervWallTomlPath();
+    const QStringList files = {wallToml, home(".config/ml4w/colors/colors.json"), home(".cache/wal/colors.json"),
                                home(".cache/ml4w/hyprland-dotfiles/current_wallpaper")};
-    const QStringList dirs = {home(".config/ml4w/colors"), home(".cache/wal"), home(".cache/ml4w/hyprland-dotfiles")};
+    const QStringList dirs = {QFileInfo(wallToml).absolutePath(), home(".config/ml4w/colors"), home(".cache/wal"), home(".cache/ml4w/hyprland-dotfiles")};
     // Tools often replace a file instead of rewriting it, which drops the watch: add again.
     for (const QString& f : files)
         if (QFileInfo::exists(f) && !watcher_.files().contains(f)) watcher_.addPath(f);

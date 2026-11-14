@@ -1631,7 +1631,7 @@ void MainWindow::showSettings() {
     colours.choices = {"Wallpaper", "Unit-01", "Unit-00", "Unit-02"};
     colours.get = [this, unitOrder] { return qMax(0, static_cast<int>(unitOrder.indexOf(currentUnit()))); };
     colours.set = [this, unitOrder](int v) { emit paletteRequested(unitOrder.value(v)); };
-    colours.note = "Wallpaper follows ML4W / matugen; the units are fixed  \xC2\xB7  Ctrl+P cycles";
+    colours.note = "Wallpaper follows the desktop wallpaper; the units are fixed  \xC2\xB7  Ctrl+P cycles";
     rows << colours;
 
     Row clear;
