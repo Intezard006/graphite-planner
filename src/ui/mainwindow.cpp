@@ -30,7 +30,9 @@
 #include <QUrl>
 #include <QVBoxLayout>
 
+#include "desktop/agendafile.hpp"
 #include "desktop/blur.hpp"
+#include "planner/agenda.hpp"
 #include "desktop/updates.hpp"
 #include "notes/glossary.hpp"
 #include "notes/essentials.hpp"
@@ -63,16 +65,6 @@ QString ordinal(int day) {
         case 3: return QString::number(day) + "rd";
         default: return QString::number(day) + "th";
     }
-}
-
-QString readJournalFormat(const QString& graph) {
-    QFile f(graph + "/logseq/config.edn");
-    if (!f.open(QIODevice::ReadOnly)) return "yyyy_MM_dd";
-    const QString text = QString::fromUtf8(f.readAll());
-    static const QRegularExpression re(R"re(^\s*:journal/file-name-format\s+"([^"]+)")re",
-                                       QRegularExpression::MultilineOption);
-    const QRegularExpressionMatch m = re.match(text);
-    return m.hasMatch() ? m.captured(1) : QString("yyyy_MM_dd");
 }
 
 qint64 mtimeOf(const QString& path) { return QFileInfo(path).lastModified().toMSecsSinceEpoch(); }
@@ -165,6 +157,9 @@ MainWindow::MainWindow(const QString& graphPath, QWidget* parent) : QMainWindow(
     deadlineWake_.setSingleShot(true);
     deadlineWake_.setTimerType(Qt::CoarseTimer);
     connect(&deadlineWake_, &QTimer::timeout, this, &MainWindow::updatePatternBlue);
+    agendaWake_.setSingleShot(true);
+    agendaWake_.setInterval(500);
+    connect(&agendaWake_, &QTimer::timeout, this, &MainWindow::exportAgenda);
     opTick_.setInterval(1000);
     opTick_.setTimerType(Qt::CoarseTimer);
     connect(&opTick_, &QTimer::timeout, this, &MainWindow::operationTick);
@@ -487,6 +482,7 @@ void MainWindow::updatePatternBlue() {
     updateRamiel(tasks);
     updateNext();
     scheduleDeadlineWake(tasks);
+    scheduleAgenda();
 
     const bool todayPage = page_ && page_->journal &&
                            QDate::fromString(QFileInfo(page_->path).completeBaseName(), journalFormat_) == today;
@@ -655,21 +651,6 @@ void MainWindow::cycleCarried(QString path, int block) {  // by value: the row i
     }
 }
 
-namespace {
-// A task as one short line: its first line without marker, dates and markup.
-QString shortTaskText(QString line) {
-    static const QRegularExpression noise(R"(\b(SCHEDULED|DEADLINE):\s*<[^>]*>|^\s*#+\s+|\*\*|`)");
-    static const QRegularExpression marker(R"(^\s*(TODO|DOING|NOW|LATER|WAITING|WAIT|DONE|CANCELED|CANCELLED)\s+)");
-    return line.section('\n', 0, 0).remove(noise).remove(marker).simplified();
-}
-// An exam as one short line: no time, marker, dates or #exam tag ("Quiz").
-QString examText(const QString& block) {
-    static const QRegularExpression tag(R"((^|\s)#(exam|\[\[exam\]\]))", QRegularExpression::CaseInsensitiveOption);
-    QString line = block.section('\n', 0, 0);
-    if (TimeSlot slot; blockTime(line, &slot)) line.remove(slot.at, slot.length);
-    return shortTaskText(line).remove(tag).simplified();
-}
-}  // namespace
 
 // The nearest exam (collectExams: #exam / tags:: exam, own date or its heading's) from today
 // on and not DONE: a countdown in the NERV panel, named with the block it sits under:
@@ -704,6 +685,20 @@ void MainWindow::updateExam() {
         s.setValue("ramiel/exam", nerv_->examName());
         s.setValue("ramiel/date", best.toString(Qt::ISODate));
     }
+}
+
+// The desktop agenda (planner/agenda.*, desktop/agendafile.*). Called wherever the exam / next /
+// deadline data is recomputed (updatePatternBlue: index changes, saves, the wake, midnight); a
+// burst of calls becomes one export 0.5 s after the last. A single shot, never a poll; nothing
+// is written when the content is unchanged, and nothing at all when the setting is off.
+void MainWindow::scheduleAgenda() {
+    if (graph_.isEmpty() || !agendaEnabled()) return;
+    agendaWake_.start();
+}
+
+void MainWindow::exportAgenda() {
+    if (graph_.isEmpty() || !agendaEnabled()) return;
+    writeAgendaFile(buildAgenda(index_, QDateTime::currentDateTime(), graph_, journalFormat_));
 }
 
 // Exams mark themselves DONE once over (examOver: the end of a range, else the start, else
@@ -789,25 +784,7 @@ void MainWindow::updateRamiel(const QList<Task>& tasks) {
 // (same start, same text): those count once, as the journal's.
 QList<TimetableEntry> MainWindow::todayTimetable() const {
     const QDate today = QDate::currentDate();
-    QList<TimetableEntry> list = timetableFor(index_, today);
-    if (list.isEmpty()) return list;
-    const QString path = graph_ + "/journals/" + today.toString(journalFormat_) + ".md";
-    QSet<QString> written;
-    for (const GraphIndex::Page& p : index_.pages()) {
-        if (!p.journal || p.path != path) continue;
-        for (const QString& b : p.blocks) {
-            TimeSlot slot;
-            if (!blockTime(b, &slot)) continue;
-            const QString line = b.section('\n', 0, 0).remove(slot.at, slot.length);
-            written.insert(QString::number(slot.start) + "|" + shortTaskText(line).toLower());
-        }
-        break;
-    }
-    QList<TimetableEntry> out;
-    for (const TimetableEntry& e : list)
-        if (!shortTaskText(e.text).isEmpty() && !written.contains(QString::number(e.start) + "|" + shortTaskText(e.text).toLower()))
-            out << e;
-    return out;
+    return timetableToday(index_, today, graph_ + "/journals/" + today.toString(journalFormat_) + ".md");
 }
 
 int MainWindow::supplyEssentials(bool restore) {
@@ -1752,6 +1729,19 @@ void MainWindow::showSettings() {
     strips.note = "On today's journal: the counts only, or each target with its subtasks (cores) under it";
     rows << strips;
 
+    Row agenda;
+    agenda.name = "Desktop agenda";
+    agenda.choices = {"On", "Off"};
+    agenda.get = [] { return agendaEnabled() ? 0 : 1; };
+    agenda.set = [this](int v) {
+        QSettings().setValue("desktop/agenda", v == 0);
+        if (v == 0) agendaWake_.stop();
+        else scheduleAgenda();
+    };
+    agenda.note = "Writes exams, deadlines and today's timetable to ~/.local/state/nerv/agenda.toml for the desktop, "
+                  "and starts nerv-focus with /timer  \xC2\xB7  off leaves the file alone";
+    rows << agenda;
+
     heading("Tasks");
     auto onOff = [&](const QString& name, const QString& key, const QString& note) {
         Row r;
@@ -2514,6 +2504,7 @@ void MainWindow::onOperationCommand(const QString& args) {
     if (a == "stop" || a == "cancel" || a == "end" || a == "off") {
         if (operationRunning()) {
             stopOperation();
+            nervFocusStop();
             flash(Theme::instance().immersion() ? "Operation aborted" : "Timer stopped");
         }
         return;
@@ -2523,11 +2514,13 @@ void MainWindow::onOperationCommand(const QString& args) {
         flash("Timer: try /timer 20m 15s, /timer 25 or /timer stop");
         return;
     }
-    startOperation(seconds);
+    // Named after the note it was typed in ("Revise kinetics /timer 25"), for nerv-focus.
+    startOperation(seconds, plainText(shortTaskText(taskTitle(view_->activeText()))));
 }
 
-bool MainWindow::startOperation(int seconds) {
+bool MainWindow::startOperation(int seconds, const QString& label) {
     if (seconds <= 0) return false;
+    nervFocusStart(seconds, label.isEmpty() ? QString("Focus") : label);
     opStart_ = QDateTime::currentDateTime();
     opEnd_ = opStart_.addSecs(seconds);
     QSettings s;
@@ -2619,6 +2612,10 @@ void MainWindow::closeEvent(QCloseEvent* e) {
     if (!saveNow()) {
         e->ignore();
         return;
+    }
+    if (agendaWake_.isActive()) {  // a pending export goes out now
+        agendaWake_.stop();
+        exportAgenda();
     }
     blur_->setActive(false);  // give Hyprland the user's own blur back
     e->accept();

@@ -96,6 +96,19 @@ QString taskTitle(const QString& b) {
     return t.simplified();
 }
 
+QString shortTaskText(QString line) {
+    static const QRegularExpression noise(R"(\b(SCHEDULED|DEADLINE):\s*<[^>]*>|^\s*#+\s+|\*\*|`)");
+    static const QRegularExpression marker(R"(^\s*(TODO|DOING|NOW|LATER|WAITING|WAIT|DONE|CANCELED|CANCELLED)\s+)");
+    return line.section('\n', 0, 0).remove(noise).remove(marker).simplified();
+}
+
+QString examText(const QString& block) {
+    static const QRegularExpression tag(R"((^|\s)#(exam|\[\[exam\]\]))", QRegularExpression::CaseInsensitiveOption);
+    QString line = block.section('\n', 0, 0);
+    if (TimeSlot slot; blockTime(line, &slot)) line.remove(slot.at, slot.length);
+    return shortTaskText(line).remove(tag).simplified();
+}
+
 namespace {
 // For each block, the nearest task above it on its branch (-1: none); markers alongside.
 QVector<int> taskParents(const QVector<int>& depths, const QStringList& texts, QStringList* markers) {

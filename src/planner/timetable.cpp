@@ -1,5 +1,7 @@
 #include "planner/timetable.hpp"
 
+#include <QSet>
+
 #include "notes/graphindex.hpp"
 #include "planner/tasks.hpp"
 
@@ -153,6 +155,27 @@ QList<TimetableEntry> timetableFor(const GraphIndex& index, const QDate& date) {
     std::stable_sort(out.begin(), out.end(), [](const TimetableEntry& a, const TimetableEntry& b) {
         return a.start != b.start ? a.start < b.start : a.end < b.end;
     });
+    return out;
+}
+
+QList<TimetableEntry> timetableToday(const GraphIndex& index, const QDate& today, const QString& journalPath) {
+    QList<TimetableEntry> list = timetableFor(index, today);
+    if (list.isEmpty()) return list;
+    QSet<QString> written;
+    for (const GraphIndex::Page& p : index.pages()) {
+        if (!p.journal || p.path != journalPath) continue;
+        for (const QString& b : p.blocks) {
+            TimeSlot slot;
+            if (!blockTime(b, &slot)) continue;
+            const QString line = b.section('\n', 0, 0).remove(slot.at, slot.length);
+            written.insert(QString::number(slot.start) + "|" + shortTaskText(line).toLower());
+        }
+        break;
+    }
+    QList<TimetableEntry> out;
+    for (const TimetableEntry& e : list)
+        if (!shortTaskText(e.text).isEmpty() && !written.contains(QString::number(e.start) + "|" + shortTaskText(e.text).toLower()))
+            out << e;
     return out;
 }
 

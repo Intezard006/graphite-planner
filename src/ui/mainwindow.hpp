@@ -49,7 +49,7 @@ public:
     int supplyEssentials(bool restore = false);
     NervPanel* nervPanel() const { return nerv_; }
     // Operations (study timer): "/timer 20m 15s" in a block, or these.
-    bool startOperation(int seconds);
+    bool startOperation(int seconds, const QString& label = QString());
     void stopOperation();
     bool operationRunning() const { return opEnd_.isValid(); }
 
@@ -144,6 +144,10 @@ private:
     void updatePatternBlue();
     void updateGlossary();
     void updateExam();
+    // The desktop agenda file (desktop/agenda): rebuilt a moment after the last change, written
+    // only when its content differs. No timer of its own beyond that single shot.
+    void scheduleAgenda();
+    void exportAgenda();
     void finishPastExams();
     // Ramiel's moments and the day's time blocks, from the task list updatePatternBlue made.
     void updateRamiel(const QList<Task>& tasks);
@@ -216,6 +220,7 @@ private:
     QDateTime opStart_, opEnd_;  // the running operation; invalid = none (saved in QSettings too)
     QTimer opTick_;              // once a second, only while one runs
     QTimer deadlineWake_;        // single shot: the next deadline, time block or midnight
+    QTimer agendaWake_;          // single shot: debounce for the agenda export
     bool finishingExams_ = false;  // finishPastExams -> setBlockText -> updatePatternBlue
     int lastOpenToday_ = -1;     // open tasks due today or before, at the last update
     QDateTime flashUntil_;       // a status message holds until then

@@ -46,6 +46,7 @@
 #include "ui/nervpanel.hpp"
 #include "ui/outlinerview.hpp"
 #include "ui/overlay.hpp"
+#include "desktop/agendafile.hpp"
 #include "desktop/palette.hpp"
 #include "ui/settingspage.hpp"
 #include "desktop/updates.hpp"
@@ -202,6 +203,9 @@ int main(int argc, char** argv) {
     qputenv("XDG_CONFIG_HOME", config.path().toUtf8());
     QTemporaryDir data;  // the art folder (XDG_DATA_HOME/graphite/art): never the real ~/.local/share
     qputenv("XDG_DATA_HOME", data.path().toUtf8());
+    QTemporaryDir state;  // the desktop agenda (XDG_STATE_HOME/nerv/agenda.toml): never the real ~/.local/state
+    qputenv("XDG_STATE_HOME", state.path().toUtf8());
+    qputenv("GRAPHITE_NERV_FOCUS", (state.path() + "/no-such-nerv-focus").toUtf8());  // never a real nerv-focus
     qputenv("GRAPHITE_NO_TRASH", "1");  // deleted pages go to the test graph's .recycle, not the real Trash
     // Updates are looked for in a fake source folder, as old as can be (nothing newer than us).
     QTemporaryDir source;
@@ -1401,6 +1405,15 @@ int main(int argc, char** argv) {
         trigger(w, "Ctrl+S");
         CHECK(readFile(todayFile).contains("Operation 0:02") && readFile(todayFile).contains("#operation"));
 
+        // nerv-focus (a fake script logging its arguments) hears of the start and the stop.
+        const QString focusLog = tmp.path() + "/focus.log", focusBin = tmp.path() + "/fake-nerv-focus";
+        {
+            QFile fb(focusBin);
+            if (fb.open(QIODevice::WriteOnly)) fb.write("#!/bin/sh\nprintf '%s|' \"$@\" >> '" + focusLog.toUtf8() + "'\nprintf '\\n' >> '" + focusLog.toUtf8() + "'\n");
+            fb.close();
+            QFile::setPermissions(focusBin, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
+        }
+        qputenv("GRAPHITE_NERV_FOCUS", focusBin.toUtf8());
         view->focusBlock(10);
         typeText(editorOf(w), " /timer 10m");
         press(editorOf(w), Qt::Key_Return);
@@ -1408,6 +1421,20 @@ int main(int argc, char** argv) {
         typeText(editorOf(w), " /timer stop");
         press(editorOf(w), Qt::Key_Return);
         CHECK(!w.operationRunning() && w.nervPanel()->operationLeft() < 0);
+        for (int i = 0; i < 60 && readFile(focusLog).count('\n') < 2; ++i) QTest::qWait(50);
+        CHECK(readFile(focusLog).contains("start|--single|10|") && readFile(focusLog).contains("stop|\n"));
+        QSettings().setValue("desktop/agenda", false);  // export off: nerv-focus is not called either
+        QFile::remove(focusLog);
+        CHECK(w.startOperation(300, "x"));
+        w.stopOperation();
+        QTest::qWait(300);
+        CHECK(!QFileInfo::exists(focusLog));
+        QSettings().remove("desktop/agenda");
+        qputenv("GRAPHITE_NERV_FOCUS", (tmp.path() + "/no-such-nerv-focus").toUtf8());
+        // The desktop agenda was exported (debounced) into the temp state dir, and only there.
+        for (int i = 0; i < 60 && !QFileInfo::exists(nervAgendaPath()); ++i) QTest::qWait(50);
+        CHECK(nervAgendaPath().startsWith(qEnvironmentVariable("XDG_STATE_HOME")));
+        CHECK(readFile(nervAgendaPath()).startsWith("written = \""));
         typeText(editorOf(w), " /timer soonish");
         press(editorOf(w), Qt::Key_Return);                       // not a duration: nothing starts
         CHECK(!w.operationRunning());

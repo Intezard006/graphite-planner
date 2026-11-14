@@ -1335,6 +1335,8 @@ bool OutlinerView::acceptTime(int row) {
     return true;
 }
 
+QString OutlinerView::activeText() const { return active_ >= 0 && editor_ ? editor_->toPlainText() : QString(); }
+
 // "/timer 20m 15s" ending the line before the cursor: take it out of the note and run it.
 bool OutlinerView::runTimerLine() {
     QTextCursor c = editor_->textCursor();

@@ -106,6 +106,7 @@ public:
     const QList<Alert>& alerts() const { return alerts_; }
     QString renderedText(int block) const;  // the block as shown (not edited), for tests
     int activeBlock() const { return active_; }  // the block being edited, or -1 (tests)
+    QString activeText() const;  // its text as typed so far, or empty
     QRect selectionRect() const;  // the selection's moving end in viewport coordinates, or invalid (tests)
 
     // Find in page (Ctrl+F): highlights matches in the visible blocks.

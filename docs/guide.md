@@ -7,7 +7,7 @@ short interactive tutorial, and **Ctrl+/** (or F1) for every key. Installing is 
 ## Contents
 
 - **Notes and pages**: [Trees, books and pages](#trees-books-and-pages), [Links, tags and search](#links-tags-and-search), [Find and focus](#find-and-focus), [Several blocks at once](#several-blocks-at-once), [Commands](#commands), [Snippets](#snippets), [Dates](#dates), [Images](#images), [PDF](#pdf), [Deleting a page](#deleting-a-page), [Your files](#your-files)
-- **Planning**: [Tasks](#tasks), [Progress bars](#progress-bars), [Day scrap](#day-scrap), [Graphite Essentials](#graphite-essentials)
+- **Planning**: [Tasks](#tasks), [Progress bars](#progress-bars), [Day scrap](#day-scrap), [Graphite Essentials](#graphite-essentials), [Desktop agenda](#desktop-agenda)
 - **Maths and science**: [Maths and chemistry](#maths-and-chemistry), [Quick maths](#quick-maths), [Balancing equations](#balancing-equations), [Lab tables and plots](#lab-tables-and-plots), [Graphs](#graphs), [Definitions](#definitions)
 - **Look and feel**: [Colours](#colours), [Fonts](#fonts), [Transparency and blur](#transparency-and-blur), [Settings and text size](#settings-and-text-size), [Sidebar art](#sidebar-art), [Immersion](#immersion), [NERV panel](#nerv-panel)
 - [Keys](#keys)
@@ -257,6 +257,23 @@ missing ones (pages you edited are left as they are). New guides in later versio
 to the book when they arrive.
 
 # Maths and science
+
+## Desktop agenda
+
+Graphite keeps one small file for the rest of the desktop (wallpaper widget, lock screen, bar,
+calendar): `$XDG_STATE_HOME/nerv/agenda.toml` (`~/.local/state/nerv/agenda.toml`, mode 0600,
+written atomically). It holds `[[exam]]` (every exam not done and not over: name, date, time,
+end), `[[deadline]]` (open DEADLINE tasks dated today or later: text, date, time) and `[[today]]`
+(today's timed rows from the Ctrl+D timeline: start, end, text), plus the `written` time. Names
+are plain text (the exam's heading follows after a colon: "Quiz: Chemical Equilibrium"); nothing
+is relative, so the reader works out "in 2 days" itself. It is rewritten a moment after anything
+changes and left alone when the content is the same, so watching it costs nothing.
+
+- **Settings › Desktop agenda** (on by default) turns the export off; the file is then not touched.
+- `graphite --agenda` writes the file without opening a window (add `--force` to write while the
+  setting is off, a folder to use another graph); `graphite --agenda --print` shows it on screen.
+- With the program `nerv-focus` installed, `/timer 25` also runs `nerv-focus start --single 25
+  "note text"` and `/timer stop` runs `nerv-focus stop` (the same setting switches this off).
 
 ## Maths and chemistry
 

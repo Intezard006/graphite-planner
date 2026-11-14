@@ -5,6 +5,12 @@ feature in full.
 
 ## Unreleased
 
+- **Desktop agenda**: Graphite writes `$XDG_STATE_HOME/nerv/agenda.toml` (exams not done or over,
+  open deadlines from today, today's timed rows) for the desktop to watch: plain text, atomic,
+  0600, rewritten a moment after the data changes and skipped when only the `written` time
+  would differ. Settings › Desktop agenda (`desktop/agenda`, on) turns it off.
+  `graphite --agenda [--print] [--force]` does it headlessly. `/timer` starts and stops
+  `nerv-focus` when that program is installed.
 - **NERV-HQ wallpaper**: the colours follow the image named in `$XDG_STATE_HOME/nerv/wall.toml`
   (`mode = "image"`) first and re-read when it changes. `mode = "live"` falls through to the
   older sources; the ML4W / matugen paths remain only as last fallbacks.

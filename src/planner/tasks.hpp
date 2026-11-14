@@ -84,6 +84,12 @@ QString completeTask(const QString& blockText);
 // The first line for display: no marker, heading hashes or inline dates ("18:00 Make notes").
 QString taskTitle(const QString& blockText);
 
+// A task or block as one short line for lists (timeline, NEXT row, exams): the first line
+// without marker, heading hashes, SCHEDULED/DEADLINE dates, bold and code marks.
+QString shortTaskText(QString line);
+// An exam block as one short line: no time, marker, dates or #exam tag ("Quiz").
+QString examText(const QString& block);
+
 // Headings that follow their subtasks (a subtask: a task under another task, the nearest task
 // above it on its branch, as in collectTasks):
 //   finish  all subtasks closed (at least one DONE) -> the heading is DONE; a DONE heading with

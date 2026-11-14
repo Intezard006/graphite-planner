@@ -40,6 +40,10 @@ int timetablePage(const GraphIndex& index);
 // The entries for `date`'s weekday, in time order.
 QList<TimetableEntry> timetableFor(const GraphIndex& index, const QDate& date);
 
+// Today's entries, less the ones already written as a time block in today's journal
+// (`journalPath`; same start, same text): those count once, as the journal's.
+QList<TimetableEntry> timetableToday(const GraphIndex& index, const QDate& today, const QString& journalPath);
+
 // The text of a new timetable page: the properties and a block per day.
 QString timetableTemplate();
 

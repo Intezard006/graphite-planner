@@ -78,6 +78,8 @@ if(GRAPHITE_BUILD_UI)
         src/notes/graphindex.cpp
         src/notes/graphindex.hpp
         # Tasks, progress bars, timetable, timers
+        src/planner/agenda.cpp
+        src/planner/agenda.hpp
         src/planner/operation.cpp
         src/planner/operation.hpp
         src/planner/progress.cpp
@@ -110,6 +112,8 @@ if(GRAPHITE_BUILD_UI)
         src/render/tex.cpp
         src/render/tex.hpp
         # Wallpaper colours, Hyprland blur, the update watcher
+        src/desktop/agendafile.cpp
+        src/desktop/agendafile.hpp
         src/desktop/blur.cpp
         src/desktop/blur.hpp
         src/desktop/palette.cpp
@@ -184,6 +188,12 @@ if(GRAPHITE_BUILD_UI)
     add_executable(palette_test tests/palette_test.cpp)
     target_link_libraries(palette_test PRIVATE graphite_ui)
     add_test(NAME palette COMMAND palette_test)
+
+    add_executable(agenda_test tests/agenda_test.cpp)
+    target_link_libraries(agenda_test PRIVATE graphite_ui)
+    target_compile_definitions(agenda_test PRIVATE GRAPHITE_BIN="$<TARGET_FILE:graphite>")
+    add_dependencies(agenda_test graphite)
+    add_test(NAME agenda COMMAND agenda_test)
 
     add_executable(index_test tests/index_test.cpp)
     target_link_libraries(index_test PRIVATE graphite_ui)

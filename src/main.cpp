@@ -1,4 +1,5 @@
 #include <QApplication>
+#include <QCoreApplication>
 #include <QDir>
 #include <QFileDialog>
 #include <QFontDatabase>
@@ -10,6 +11,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include "desktop/agendafile.hpp"
 #include "desktop/blur.hpp"
 #include "ui/mainwindow.hpp"
 #include "desktop/palette.hpp"
@@ -22,6 +24,10 @@
 //   --palette wallpaper  follow the wallpaper (the default)
 //   --palette-info     print where the colours came from and exit
 //   --version          print the version and exit
+//   --agenda [--print] [--force] [graph]
+//                      write the desktop agenda ($XDG_STATE_HOME/nerv/agenda.toml) and exit; no
+//                      window, no display needed. --print writes the TOML to stdout instead,
+//                      --force writes even when Settings has the export off
 // With no path the graph used last time is opened; the first run asks for a folder.
 // Ctrl+P switches between the two palettes and remembers the choice; --palette overrides it
 // for one run.
@@ -54,6 +60,14 @@ int main(int argc, char** argv) {
         if (qstrcmp(argv[i], "--version") == 0) {
             std::printf("graphite %s\n", GRAPHITE_VERSION);
             return 0;
+        }
+    // Headless: a QCoreApplication, never a window (works with no display at all).
+    for (int i = 1; i < argc; ++i)
+        if (qstrcmp(argv[i], "--agenda") == 0) {
+            QCoreApplication core(argc, argv);
+            QCoreApplication::setApplicationName("graphite");  // same QSettings as the window
+            QCoreApplication::setOrganizationName("graphite");
+            return graphite::runAgendaCli(QCoreApplication::arguments().mid(1));
         }
     QApplication app(argc, argv);
     registerBundledFonts();  // before the theme looks up its families
