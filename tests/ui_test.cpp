@@ -2647,6 +2647,39 @@ int main(int argc, char** argv) {
     Theme::instance().setPalette(original);
     CHECK(Theme::instance().palette() == original);
 
+    // 14. The nerv palette: amber on black, and the sidebar draws nerv.png (tinted to signal); with
+    // no nerv.png the normal unit art is drawn instead.
+    {
+        Theme::instance().setImmersion(true);
+        QSettings().remove("unitArt");
+        const QString logoPath = artDir() + "/nerv.png";
+        QDir().mkpath(artDir());
+        const QString real = QDir::homePath() + "/.local/share/graphite/art/nerv.png";
+        if (qEnvironmentVariableIsEmpty("GRAPHITE_SHOTS") || !QFile::copy(real, logoPath)) {
+            QImage logo(120, 120, QImage::Format_Indexed8);  // no alpha: grey checkerboard, red disc
+            logo.setColorTable({qRgb(255, 255, 255), qRgb(235, 235, 235), qRgb(255, 0, 0)});
+            for (int y = 0; y < 120; ++y)
+                for (int x = 0; x < 120; ++x)
+                    logo.setPixel(x, y, (x - 60) * (x - 60) + (y - 60) * (y - 60) < 2500 ? 2 : ((x / 8 + y / 8) & 1));
+            CHECK(logo.save(logoPath, "PNG"));
+        }
+        forgetUnitArt();
+        w.resize(1180, 760);
+        const PaletteColors before = Theme::instance().palette();
+        Theme::instance().setPalette(nervPalette());
+        CHECK(Theme::instance().palette().source == "NERV" && Theme::instance().bg() == QColor("#000000"));
+        shot(w, "6_nerv");
+        settle();
+        const QImage with = w.grab().toImage();
+        QFile::remove(logoPath);
+        forgetUnitArt();
+        w.update();
+        settle();
+        const QImage without = w.grab().toImage();
+        CHECK(with != without);  // the logo was painted; absent, the fallback art is not the logo
+        Theme::instance().setPalette(before);
+    }
+
     if (failures == 0) std::printf("all ui tests passed\n");
     return failures == 0 ? 0 : 1;
 }

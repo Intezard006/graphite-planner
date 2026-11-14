@@ -457,7 +457,8 @@ All of these follow one switch, **Immersion** in Settings (on by default); off, 
 features use plain wording and the flourishes go.
 
 - **Unit palettes**: Ctrl+P cycles wallpaper → Unit-01 (violet/green) → Unit-00 (blue/white)
-  → Unit-02 (red/orange); also in Settings. The NERV panel names the unit, and the unit's
+  → Unit-02 (red/orange) → NERV (amber on black, from `~/.config/nerv/palette.toml`; the sidebar
+  shows the NERV logo from `nerv.png` in the art folder, in amber); also in Settings. The NERV panel names the unit, and the unit's
   whole body stands faintly behind the page list, front view; with wallpaper colours it is the unit
   nearest your desktop's colours (Settings > Sidebar unit can fix one or turn it off).
 - **Title cards**: New page (Ctrl+N) is laid out like an episode card: the title in a box on
@@ -561,7 +562,7 @@ On a Mac, ⌘ takes the place of Ctrl and ⌥ (Option) the place of Alt.
 | Ctrl+[ / Ctrl+] | less / more blur (transparent mode) |
 | Ctrl+J / Ctrl+N / Ctrl+O | today's journal / new page / open another graph |
 | Ctrl+T | transparent background, text stays opaque |
-| Ctrl+P | colours: wallpaper / Unit-01 / Unit-00 / Unit-02 |
+| Ctrl+P | colours: wallpaper / Unit-01 / Unit-00 / Unit-02 / NERV |
 | Ctrl+Shift+F | title and body fonts: search, arrows preview, Tab switches, Enter keeps |
 | Ctrl+/ or F1 | show every key |
 | Ctrl+Q | quit |

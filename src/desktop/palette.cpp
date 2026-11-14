@@ -80,15 +80,17 @@ PaletteColors builtinPalette() {
     return p;
 }
 
-QStringList unitIds() { return {"unit01", "unit00", "unit02"}; }
+QStringList unitIds() { return {"unit01", "unit00", "unit02", "nerv"}; }
 
 QString unitName(const QString& id) {
+    if (id == "nerv") return "NERV";
     if (id == "unit00") return "Unit-00";
     if (id == "unit02") return "Unit-02";
     return "Unit-01";
 }
 
 PaletteColors unitPalette(const QString& id) {
+    if (id == "nerv") return nervPalette();
     if (id == "unit00") {  // Rei: blue armour, white, the original yellow-orange
         PaletteColors p;
         p.bg = QColor(0x09, 0x0c, 0x13);
@@ -303,6 +305,66 @@ QString wallpaperFromWallToml(const QString& text) {
     return QFileInfo::exists(st.image) ? st.image : QString();
 }
 
+namespace {
+QString nervConfigDir() {
+    QString base = qEnvironmentVariable("XDG_CONFIG_HOME");
+    if (base.isEmpty() || !QDir::isAbsolutePath(base)) base = QDir::homePath() + "/.config";
+    return base + "/nerv";
+}
+}  // namespace
+
+QString nervPaletteTomlPath() { return nervConfigDir() + "/palette.toml"; }
+
+// Amber on black. Text is signal (dim for the quiet kind), the mint grid only draws structure,
+// alarm is the red for errors. Raised surfaces: 4% signal over the field. `accent` is ignored.
+PaletteColors paletteFromNervToml(const QString& text) {
+    QColor field(0x00, 0x00, 0x00), signal(0xFF, 0x83, 0x24), halo(0xFF, 0x38, 0x10), grid(0x4C, 0xE8, 0xA8),
+        alarm(0xFF, 0x20, 0x30), dim(0xA8, 0x52, 0x1A);
+    static const QRegularExpression hex(R"(^#[0-9A-Fa-f]{6}$)");
+    for (QString line : text.split('\n')) {
+        line = line.trimmed();
+        const int eq = line.indexOf('=');
+        if (line.startsWith('#') || line.startsWith('[') || eq < 0) continue;
+        const QString key = line.left(eq).trimmed();
+        QString val = line.mid(eq + 1).trimmed();
+        if (!val.isEmpty() && (val[0] == '"' || val[0] == '\'')) {
+            const int end = val.indexOf(val[0], 1);
+            val = end < 0 ? val.mid(1) : val.mid(1, end - 1);
+        } else {
+            const int hash = val.indexOf('#', 1);
+            if (hash >= 0) val = val.left(hash).trimmed();
+        }
+        if (!hex.match(val).hasMatch()) continue;
+        const QColor c(val);
+        if (key == "field") field = c;
+        else if (key == "signal") signal = c;
+        else if (key == "halo") halo = c;
+        else if (key == "grid") grid = c;
+        else if (key == "alarm") alarm = c;
+        else if (key == "dim") dim = c;
+    }
+    PaletteColors p;
+    p.bg = field;
+    p.panel = mixColors(field, signal, 0.04);
+    p.text = signal;
+    p.accent = signal;
+    p.structure = signal;
+    p.warm = halo;
+    p.alarm = alarm;
+    p.tones.dim = p.tones.dimClear = dim;
+    p.tones.faint = p.tones.faintClear = dim;
+    p.tones.line = QColor(grid.red(), grid.green(), grid.blue(), 70);
+    p.tones.lineClear = QColor(grid.red(), grid.green(), grid.blue(), 110);
+    p.tones.selection = QColor(signal.red(), signal.green(), signal.blue(), 60);
+    p.source = "NERV";
+    return p;
+}
+
+PaletteColors nervPalette() {
+    QFile f(nervPaletteTomlPath());
+    return paletteFromNervToml(f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.read(1 << 16)) : QString());
+}
+
 QString nervWallTomlPath() {
     QString base = qEnvironmentVariable("XDG_STATE_HOME");
     if (base.isEmpty() || !QDir::isAbsolutePath(base)) base = QDir::homePath() + "/.local/state";
@@ -413,8 +475,9 @@ PaletteColors PaletteProvider::detect() {
 
 void PaletteProvider::rewatch() {
     const QString wallToml = nervWallTomlPath();
-    const QStringList files = {wallToml, home(".cache/wal/colors.json")};
-    const QStringList dirs = {QFileInfo(wallToml).absolutePath(), home(".cache/wal")};
+    const QString nervToml = nervPaletteTomlPath();
+    const QStringList files = {wallToml, home(".cache/wal/colors.json"), nervToml};
+    const QStringList dirs = {QFileInfo(wallToml).absolutePath(), home(".cache/wal"), QFileInfo(nervToml).absolutePath()};
     // Tools often replace a file instead of rewriting it, which drops the watch: add again.
     for (const QString& f : files)
         if (QFileInfo::exists(f) && !watcher_.files().contains(f)) watcher_.addPath(f);

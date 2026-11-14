@@ -10,6 +10,7 @@
 #include <cstdio>
 
 #include "desktop/palette.hpp"
+#include "ui/unitart.hpp"
 
 using namespace graphite;
 
@@ -36,6 +37,7 @@ int main(int argc, char** argv) {
     CHECK(fakeHome.isValid());
     qputenv("HOME", fakeHome.path().toUtf8());
     qputenv("XDG_STATE_HOME", (fakeHome.path() + "/state").toUtf8());
+    qputenv("XDG_CONFIG_HOME", (fakeHome.path() + "/config").toUtf8());
     qunsetenv("GRAPHITE_WALLPAPER");
 
     bool ok = false;
@@ -185,6 +187,44 @@ int main(int argc, char** argv) {
             p6.start();
             CHECK(p6.describe() == "wallpaper image " + png2);
         }
+    }
+
+    // NERV palette: defaults without a file, partial and invalid files, derived surfaces.
+    {
+        CHECK(nervPaletteTomlPath() == fakeHome.path() + "/config/nerv/palette.toml");
+        const PaletteColors d = nervPalette();  // no file
+        CHECK(d.source == "NERV" && d.bg == QColor("#000000") && d.text == QColor("#FF8324"));
+        CHECK(d.warm == QColor("#FF3810") && d.alarm == QColor("#FF2030") && d.tones.dim == QColor("#A8521A"));
+        CHECK(d.tones.line.rgb() == QColor("#4CE8A8").rgb() && d.panel != d.bg && d.panel.redF() < 0.06);
+        CHECK(unitPalette("nerv") == d && unitIds().contains("nerv"));
+        const PaletteColors part = paletteFromNervToml("# c\nsignal = \"#112233\"  # note\ndim='#445566'\nfield = #000001\n[x]\n");
+        CHECK(part.text == QColor("#112233") && part.tones.dim == QColor("#445566") && part.bg == QColor("#000001"));
+        const PaletteColors bad = paletteFromNervToml("signal = \"red\"\nhalo = #12345\nalarm = \"#GGGGGG\"\ngrid\n= =\naccent = \"#00FF00\"\n");
+        CHECK(bad == d);  // invalid keys keep defaults; accent is not used
+        QDir().mkpath(fakeHome.path() + "/config/nerv");
+        QFile f(nervPaletteTomlPath());
+        CHECK(f.open(QIODevice::WriteOnly));
+        f.write("signal = \"#102030\"\n");
+        f.close();
+        CHECK(nervPalette().text == QColor("#102030"));
+        QFile::remove(nervPaletteTomlPath());
+    }
+
+    // NERV logo mask: red is opaque, the checkerboard greys and white are clear, edges in between.
+    {
+        QImage logo(4, 1, QImage::Format_RGB32);
+        logo.setPixel(0, 0, qRgb(255, 0, 0));
+        logo.setPixel(1, 0, qRgb(235, 235, 235));
+        logo.setPixel(2, 0, qRgb(255, 255, 255));
+        logo.setPixel(3, 0, qRgb(255, 128, 128));
+        const QImage m = nervLogoMask(logo);
+        CHECK(m.format() == QImage::Format_Alpha8);
+        CHECK(m.constScanLine(0)[0] == 255 && m.constScanLine(0)[1] == 0 && m.constScanLine(0)[2] == 0);
+        CHECK(std::abs(m.constScanLine(0)[3] - 127) <= 1);
+        QImage a(1, 1, QImage::Format_ARGB32);  // a real alpha channel multiplies in
+        a.setPixel(0, 0, qRgba(255, 0, 0, 128));
+        CHECK(std::abs(nervLogoMask(a).constScanLine(0)[0] - 128) <= 1);
+        CHECK(nervLogoMask(QImage()).isNull());
     }
 
     if (failures == 0) std::printf("all palette tests passed\n");

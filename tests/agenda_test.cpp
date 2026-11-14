@@ -258,7 +258,8 @@ int main(int argc, char** argv) {
     // 6. nerv-focus: started detached with the right arguments; off with the setting.
     {
         const QString log = home + "/focus.log", fake = home + "/fake-nerv-focus";
-        write(fake, "#!/bin/sh\nprintf '%s|' \"$@\" >> '" + log + "'\nprintf '\\n' >> '" + log + "'\n");
+        // One write per call: the two detached processes must not interleave their lines.
+        write(fake, "#!/bin/sh\nl=$(printf '%s|' \"$@\")\nprintf '%s\\n' \"$l\" >> '" + log + "'\n");
         QFile::setPermissions(fake, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
         qputenv("GRAPHITE_NERV_FOCUS", fake.toUtf8());
         CHECK(agendaEnabled());

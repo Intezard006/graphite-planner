@@ -845,7 +845,7 @@ public:
         const QString date = idx.data(Qt::UserRole + 2).toString();
         const qint64 left = idx.data(Qt::UserRole + 10).toLongLong();
         if (!date.isEmpty() && left < (qint64(1) << 40)) {  // a countdown: amber, red in the last hour
-            const QColor tone = left < 3600 ? QColor(0xff, 0x4d, 0x4d) : QColor(0xff, 0xb0, 0x00);
+            const QColor tone = left < 3600 ? Theme::instance().alarm() : QColor(0xff, 0xb0, 0x00);
             QFont f = th.monoFont();
             f.setBold(true);
             const int w = QFontMetrics(f).horizontalAdvance(date) + 10;
@@ -1388,7 +1388,7 @@ void ConfirmPanel::keyPressEvent(QKeyEvent* e) {
 
 void ConfirmPanel::restyle() {
     const Theme& th = Theme::instance();
-    title_->setStyleSheet(colorCss(QColor(0xff, 0x4d, 0x4d)));
+    title_->setStyleSheet(colorCss(Theme::instance().alarm()));
     message_->setStyleSheet(colorCss(th.text()));
     hint_->setStyleSheet(colorCss(th.faint()));
 }

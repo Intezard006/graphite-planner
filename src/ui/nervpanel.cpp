@@ -464,7 +464,9 @@ void NervPanel::paintRamiel(QPainter& p, const QRectF& box, double heat, double 
         return QColor::fromRgbF(x.redF() + (y.redF() - x.redF()) * t, x.greenF() + (y.greenF() - x.greenF()) * t,
                                 x.blueF() + (y.blueF() - x.blueF()) * t);
     };
-    const QColor tone = mix(kRamielBlue, kAlarm, qBound(0.0, heat, 1.0) * 0.85);
+    const Theme& theme = Theme::instance();
+    const QColor base = theme.palette().source == "NERV" ? theme.text() : kRamielBlue;  // amber only under the nerv palette
+    const QColor tone = mix(base, kAlarm, qBound(0.0, heat, 1.0) * 0.85);
     int order[8] = {0, 1, 2, 3, 4, 5, 6, 7};
     std::sort(order, order + 8, [&](int x, int y) { return depth[x] < depth[y]; });
     p.save();

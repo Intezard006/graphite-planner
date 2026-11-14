@@ -48,6 +48,23 @@ QByteArray unitArt(const QString& unit) {
     return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
 }
 
+QImage nervLogoMask(const QImage& image) {
+    if (image.isNull()) return QImage();
+    const bool hasAlpha = image.hasAlphaChannel();
+    const QImage src = image.convertToFormat(QImage::Format_ARGB32);
+    QImage mask(src.size(), QImage::Format_Alpha8);
+    for (int y = 0; y < src.height(); ++y) {
+        const QRgb* in = reinterpret_cast<const QRgb*>(src.constScanLine(y));
+        uchar* out = mask.scanLine(y);
+        for (int x = 0; x < src.width(); ++x) {
+            int a = std::max(0, qRed(in[x]) - std::max(qGreen(in[x]), qBlue(in[x])));
+            if (hasAlpha) a = (a * qAlpha(in[x]) + 127) / 255;
+            out[x] = static_cast<uchar>(a);
+        }
+    }
+    return mask;
+}
+
 void forgetUnitArt() {
     cachedKey().clear();
     cached() = QPixmap();
@@ -222,13 +239,30 @@ void paintUnitArt(QPainter& p, const QRect& area, const QString& unit) {
     QString& cachedKey = graphite::cachedKey();
     QPixmap& cached = graphite::cached();
     const qreal dpr = p.device() ? p.device()->devicePixelRatioF() : 1.0;
-    const QString key = QString("%1 %2x%3 %4").arg(unit).arg(area.width()).arg(area.height()).arg(dpr);
+    // The NERV logo is tinted to the palette's text (signal); no file = the normal unit art.
+    const bool logo = unit == "nerv" && QFileInfo::exists(artDir() + "/nerv.png");
+    const QColor tint = Theme::instance().text();
+    const QString key = QString("%1 %2x%3 %4 %5").arg(logo ? "nerv" : unit == "nerv" ? "unit01" : unit).arg(area.width()).arg(area.height()).arg(dpr).arg(logo ? tint.name() : QString());
     if (key != cachedKey) {
         cachedKey = key;
         cached = QPixmap();
         // Decoded here and dropped after scaling. Naming the format keeps Qt from loading every
         // image plugin to guess it (that cost ~8 MB).
-        const QImage art = QImage::fromData(unitArt(unit), "PNG");
+        QImage art;
+        if (logo) {
+            QImage mask = nervLogoMask(QImage(artDir() + "/nerv.png", "PNG"));
+            if (!mask.isNull()) {
+                art = QImage(mask.size(), QImage::Format_ARGB32_Premultiplied);
+                art.fill(tint);
+                QPainter m(&art);  // the fill, kept where the mask is opaque
+                m.setCompositionMode(QPainter::CompositionMode_DestinationIn);
+                m.drawImage(0, 0, mask);
+                m.end();
+                art = prepareArt(art);  // cut to the visible logo, like the downloaded art
+            }
+        } else {
+            art = QImage::fromData(unitArt(unit == "nerv" ? "unit01" : unit), "PNG");
+        }
         if (!art.isNull()) {
             QSizeF size = art.size();
             size.scale(area.size(), Qt::KeepAspectRatio);

@@ -391,9 +391,9 @@ void MainWindow::buildUi() {
     add("Ctrl+T", "Transparent background", [] { Theme::instance().toggleTransparent(); });
     add("Ctrl+[", "Less blur (transparent mode)", [this] { blur_->setLevel(blur_->level() - 1); });
     add("Ctrl+]", "More blur (transparent mode)", [this] { blur_->setLevel(blur_->level() + 1); });
-    add("Ctrl+P", "Colours: wallpaper / Unit-01 / 00 / 02", [this] {
-        // Cycle wallpaper -> Unit-01 -> Unit-00 -> Unit-02 -> wallpaper.
-        const QStringList order = {QString(), "unit01", "unit00", "unit02"};
+    add("Ctrl+P", "Colours: wallpaper / Unit-01 / 00 / 02 / NERV", [this] {
+        // Cycle wallpaper -> Unit-01 -> Unit-00 -> Unit-02 -> NERV -> wallpaper.
+        const QStringList order = {QString(), "unit01", "unit00", "unit02", "nerv"};
         const int k = static_cast<int>(order.indexOf(currentUnit()));
         const QString next = order[(k + 1) % order.size()];
         emit paletteRequested(next);
@@ -550,7 +550,7 @@ void MainWindow::updatePatternBlue() {
         auto blue = [today](const QDate& d) { return d.isValid() && d <= today; };
         auto orange = [today](const QDate& d) { return d.isValid() && d > today && d <= today.addDays(3); };
         if (due) {
-            OutlinerView::Alert al{eva ? "Pattern Blue" : "Due today", QString(), QColor(0xff, 0x4d, 0x4d), {}, 0};
+            OutlinerView::Alert al{eva ? "Pattern Blue" : "Due today", QString(), Theme::instance().alarm(), {}, 0};
             if (detailed) {
                 rowsFor(al, blue);
                 const auto [roots, subs] = counted(al, blue);
@@ -1600,12 +1600,12 @@ void MainWindow::showSettings() {
         h.name = name;
         rows << h;
     };
-    const QStringList unitOrder = {QString(), "unit01", "unit00", "unit02"};
+    const QStringList unitOrder = {QString(), "unit01", "unit00", "unit02", "nerv"};
 
     heading("Appearance");
     Row colours;
     colours.name = "Colours";
-    colours.choices = {"Wallpaper", "Unit-01", "Unit-00", "Unit-02"};
+    colours.choices = {"Wallpaper", "Unit-01", "Unit-00", "Unit-02", "NERV"};
     colours.get = [this, unitOrder] { return qMax(0, static_cast<int>(unitOrder.indexOf(currentUnit()))); };
     colours.set = [this, unitOrder](int v) { emit paletteRequested(unitOrder.value(v)); };
     colours.note = "Wallpaper follows the desktop wallpaper; the units are fixed  \xC2\xB7  Ctrl+P cycles";
@@ -2016,7 +2016,8 @@ void MainWindow::paintEvent(QPaintEvent*) {
     // to the desktop's colours (Settings > Sidebar unit can fix it or turn it off).
     const QString artSetting = QSettings().value("unitArt", "auto").toString();
     if (sw > 0 && Theme::instance().immersion() && artSetting != "off" && nav_ && nerv_) {
-        const QString unit = artSetting == "auto" ? unitForColours(Theme::instance().palette()) : artSetting;
+        QString unit = artSetting == "auto" ? unitForColours(Theme::instance().palette()) : artSetting;
+        if (Theme::instance().palette().source == "NERV" && unit != "custom") unit = "nerv";  // the logo, in amber
         const int top = nav_->mapTo(this, QPoint(0, 0)).y() + 8;
         const int bottom = nerv_->isVisible() ? nerv_->mapTo(this, QPoint(0, 0)).y() - 16 : height() - 16;
         if (bottom - top > 80) paintUnitArt(p, QRect(12, top, sw - 24, bottom - top), unit);

@@ -27,6 +27,7 @@ struct PaletteColors {
     QColor accent;     // links, active bullet, state
     QColor structure;  // bullets, tags, formulas
     QColor warm;       // TODO markers
+    QColor alarm;      // errors, overdue; invalid = Theme's usual red
     // Hand-tuned secondary tones (the built-in set keeps v0.1's exactly). Invalid = Theme
     // derives them from the colours above. "Clear" = transparent mode.
     struct Tones {
@@ -40,7 +41,7 @@ struct PaletteColors {
 
     bool operator==(const PaletteColors& o) const {
         return bg == o.bg && panel == o.panel && text == o.text && accent == o.accent &&
-               structure == o.structure && warm == o.warm && tones == o.tones;
+               structure == o.structure && warm == o.warm && alarm == o.alarm && tones == o.tones;
     }
     bool operator!=(const PaletteColors& o) const { return !(*this == o); }
 };
@@ -49,9 +50,18 @@ PaletteColors builtinPalette();  // Unit-01: violet and green
 
 // Evangelion unit palettes: "unit01" (the built-in set), "unit00" (blue and white), "unit02"
 // (red and orange). unitPalette() of anything else is the built-in set.
+//
+// "nerv" is the NERV-HQ palette: colours from $XDG_CONFIG_HOME/nerv/palette.toml (fallback
+// ~/.config/nerv/palette.toml), amber on black. nervPalette() works with defaults when the
+// file is absent; keys are optional #RRGGBB strings (field, signal, halo, grid, alarm, dim,
+// accent; accent is read but unused), a missing or invalid key keeps its default.
 QStringList unitIds();
 QString unitName(const QString& id);  // "Unit-02"
 PaletteColors unitPalette(const QString& id);
+
+PaletteColors paletteFromNervToml(const QString& text);  // pure: the file's text -> palette
+QString nervPaletteTomlPath();
+PaletteColors nervPalette();                              // reads that file (absent = defaults)
 
 // Pure functions (unit tested). `ok` is set false when the input lacks what is needed.
 PaletteColors paletteFromPywal(const QJsonObject& wal, bool* ok);         // ~/.cache/wal/colors.json

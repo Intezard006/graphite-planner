@@ -48,6 +48,11 @@ signals:
 // one whose hues are nearest (violet / green -> 01, blue -> 00, red / orange -> 02).
 QString unitForColours(const PaletteColors& colours);
 
+// The NERV logo's coverage as an Alpha8 image. The art has no alpha (a grey/white checkerboard
+// is baked in and the logo is pure red), so coverage = (R - max(G,B)) / 255: pure red 1,
+// greys and white 0, anti-aliased edges in between. A real alpha channel multiplies in.
+QImage nervLogoMask(const QImage& image);
+
 // Paint `unit` centred in `area`, as large as fits.
 void paintUnitArt(QPainter& p, const QRect& area, const QString& unit);
 

@@ -81,7 +81,7 @@ public:
     bool downloadArt();  // false when declined or already running
 
 signals:
-    void paletteRequested(const QString& unit);  // "" = wallpaper, "unit01" / "unit00" / "unit02"
+    void paletteRequested(const QString& unit);  // "" = wallpaper, "unit01" / "unit00" / "unit02" / "nerv"
 
 protected:
     bool eventFilter(QObject*, QEvent*) override;  // the tree name: a click opens the tree menu

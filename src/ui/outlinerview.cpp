@@ -731,7 +731,7 @@ void buildRich(QTextDocument* doc, const QString& raw, const Theme& th, qreal dp
             if (at.isValid()) {
                 // The countdown, like an Eva's internal power: amber, red in the last hour and after.
                 const qint64 left = now.secsTo(at);
-                const QColor tone = left < 3600 ? QColor(0xff, 0x4d, 0x4d) : QColor(0xff, 0xb0, 0x00);
+                const QColor tone = left < 3600 ? Theme::instance().alarm() : QColor(0xff, 0xb0, 0x00);
                 QTextCharFormat cf = with(tone);
                 cf.setFont(th.monoFont());
                 cf.setFontPointSize(th.labelFont().pointSizeF() * 1.05);
@@ -2907,7 +2907,7 @@ void OutlinerView::paintEvent(QPaintEvent*) {
             // On the right: the countdown, or the date.
             if (ar.at.isValid()) {
                 const qint64 left = now.secsTo(ar.at);
-                const QColor tone = left < 3600 ? QColor(0xff, 0x4d, 0x4d) : QColor(0xff, 0xb0, 0x00);
+                const QColor tone = left < 3600 ? Theme::instance().alarm() : QColor(0xff, 0xb0, 0x00);
                 QFont f = mono;
                 f.setBold(true);
                 const QString cd = countdownText(ar.at, now);

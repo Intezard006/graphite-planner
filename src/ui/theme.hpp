@@ -35,6 +35,7 @@ public:
     QColor accent() const { return pal_.accent; }
     QColor structure() const { return pal_.structure; }
     QColor warm() const { return pal_.warm; }
+    QColor alarm() const { return pal_.alarm.isValid() ? pal_.alarm : QColor(0xff, 0x4d, 0x4d); }
     // Secondary tones. Lifted in transparent mode: a grey that reads fine on the solid
     // background disappears against a bright wallpaper.
     QColor dim() const;
