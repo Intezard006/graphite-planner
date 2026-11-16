@@ -1522,7 +1522,8 @@ int main(int argc, char** argv) {
         };
         CHECK(!sees("Slides"));
         writeFile(g + "/Slides/Summary.md", "- slide notes");
-        QTest::qWait(700);
+        // The folder watch is asynchronous (kqueue on macOS is slower than inotify): wait for it.
+        QTest::qWaitFor([&] { return sees("Slides"); }, 6000);
         settle();
         CHECK(sees("Slides"));
         QDir(g + "/Slides").removeRecursively();
