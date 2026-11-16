@@ -1,4 +1,5 @@
 #include "ui/outlinerview.hpp"
+#include "ui/calendar.hpp"
 
 #include <QCache>
 #include <QAbstractTextDocumentLayout>
@@ -725,6 +726,8 @@ void buildRich(QTextDocument* doc, const QString& raw, const Theme& th, qreal dp
             f.setFont(th.labelFont());
             f.setFontCapitalization(QFont::AllUppercase);
             if (k > 0) c.insertText("      ", f);
+            f.setAnchor(true);  // a click opens the calendar on it
+            f.setAnchorHref("graphite-date:" + dm.captured(1));
             QString label = dm.captured(1) + "  \xC2\xB7  " + (d.isValid() ? QLocale::c().toString(d, "ddd d MMM") : dm.captured(2));
             if (at.isValid()) label += "  \xC2\xB7  " + at.toString("HH:mm");
             c.insertText(label, f);
@@ -1146,6 +1149,9 @@ OutlinerView::OutlinerView(QWidget* parent) : QAbstractScrollArea(parent) {
 
     preview_ = new FormulaPreview(viewport());
     snippetPopup_ = new SuggestPopup(viewport());
+    calendar_ = new CalendarPopup(viewport());
+    connect(calendar_, &CalendarPopup::picked, this, [this](const QDate& d) { insertDate(d); });
+    connect(calendar_, &CalendarPopup::cancelled, this, [this] { cancelDatePick(); });
     findBar_ = new FindBar(this, viewport());
     pickImage_ = [this] {
         return QFileDialog::getOpenFileName(this, "Insert image", QDir::homePath(),
@@ -1169,9 +1175,12 @@ QList<QPair<QString, QString>> OutlinerView::snippetHelp() {
 void OutlinerView::updateSnippets() {
     auto* pop = static_cast<SuggestPopup*>(snippetPopup_);
     // The date list stays while the cursor stays where the date will go.
-    if ((suggestMode_ == Suggest::Date || suggestMode_ == Suggest::Time) && pop->isVisible() &&
-        editor_->textCursor().position() == datePos_)
+    if (suggestMode_ == Suggest::Time && pop->isVisible() && editor_->textCursor().position() == datePos_) return;
+    if (suggestMode_ == Suggest::Date && calendar_->isVisible()) {
+        // Moving the cursor elsewhere (a click in the block) closes the calendar; the old date returns.
+        if (editor_->textCursor().position() != datePos_) QTimer::singleShot(0, this, [this] { cancelDatePick(); });
         return;
+    }
     suggestMode_ = Suggest::None;
     if (active_ < 0 || !editor_->isVisible() || editor_->textCursor().hasSelection()) {
         pop->hide();
@@ -1233,26 +1242,67 @@ void OutlinerView::updateSnippets() {
     preview_->hide();  // one card at a time
 }
 
-// The list after /scheduled or /deadline: a blank date to type first, then the usual ones.
-void OutlinerView::openDatePicker(const QString& kind) {
-    const QDate today = QDate::currentDate();
-    auto nextWeekday = [&](int dow) {  // the coming one, never today
-        int add = (dow - today.dayOfWeek() + 7) % 7;
-        return today.addDays(add == 0 ? 7 : add);
-    };
+// /scheduled, /deadline, or a click on a block's date label. The date goes where the cursor is
+// (the task's own line, or a line of its own); an older date of the same kind in the block goes
+// and the calendar starts on it. Esc puts the block back as it was.
+void OutlinerView::startDatePick(const QString& kind) {
+    QString text = editor_->toPlainText();
+    int cursor = editor_->textCursor().position();
+    dateRestoreText_ = text;
+    dateRestorePos_ = cursor;
+    QDate start;
+    const QRegularExpression old("\\s*" + kind + ":\\s*<(\\d{4}-\\d{2}-\\d{2})?[^>]*>");
+    for (QRegularExpressionMatch om = old.match(text); om.hasMatch(); om = old.match(text)) {
+        if (!start.isValid()) start = QDate::fromString(om.captured(1), "yyyy-MM-dd");
+        if (om.capturedStart() < cursor) cursor -= qMin(static_cast<int>(om.capturedLength()), cursor - static_cast<int>(om.capturedStart()));
+        text.remove(om.capturedStart(), om.capturedLength());
+    }
+    if (text != editor_->toPlainText()) {
+        QTextCursor c(editor_->document());
+        c.beginEditBlock();
+        c.select(QTextCursor::Document);
+        c.insertText(text);
+        c.endEditBlock();
+    }
+    QTextCursor c = editor_->textCursor();
+    c.setPosition(qBound(0, cursor, static_cast<int>(text.size())));
+    editor_->setTextCursor(c);
+    openDatePicker(kind, start);
+}
+
+void OutlinerView::openDatePicker(const QString& kind, const QDate& start) {
     dateKind_ = kind;
     datePos_ = editor_->textCursor().position();
-    dateRows_ = {QDate(), today, today.addDays(1), today.addDays(3), nextWeekday(6), nextWeekday(1),
-                 today.addDays(7), today.addDays(14), today.addMonths(1)};
-    static const char* names[] = {"Type a date", "Today", "Tomorrow", "In 3 days", "Saturday", "Next Monday",
-                                  "In a week", "In two weeks", "In a month"};
-    QList<SuggestRow> rows;
-    for (int i = 0; i < dateRows_.size(); ++i)
-        rows << SuggestRow{i == 0 ? kind : QString(), QString::fromUtf8(names[i]), QImage(),
-                           i == 0 ? QString(kind == "DEADLINE" ? "yyyy-mm-dd hh:mm" : "yyyy-mm-dd")
-                                  : QLocale::c().toString(dateRows_[i], "ddd d MMM")};
-    static_cast<SuggestPopup*>(snippetPopup_)->set(rows);
-    showDatePopup(Suggest::Date);
+    snippetPopup_->hide();
+    preview_->hide();
+    calendar_->open(kind, start, dayMarks_ ? dayMarks_() : QHash<QDate, DayMarks>());
+    suggestMode_ = Suggest::Date;
+    const QRect cr = editor_->cursorRect();
+    QPoint at = editor_->mapTo(viewport(), QPoint(cr.left(), cr.bottom() + 6));
+    if (at.y() + calendar_->height() > viewport()->height())
+        at.setY(qMax(4, editor_->mapTo(viewport(), QPoint(0, cr.top() - 6)).y() - calendar_->height()));
+    at.setX(qBound(8, at.x() - 12, qMax(8, viewport()->width() - calendar_->width() - 8)));
+    calendar_->move(at);
+    calendar_->show();
+    calendar_->raise();
+}
+
+void OutlinerView::cancelDatePick() {
+    if (suggestMode_ != Suggest::Date) return;
+    calendar_->hide();
+    suggestMode_ = Suggest::None;
+    datePos_ = -1;
+    if (active_ < 0 || dateRestoreText_.isNull()) return;
+    const QString was = std::exchange(dateRestoreText_, QString());
+    if (editor_->toPlainText() != was) {
+        QTextCursor c(editor_->document());
+        c.beginEditBlock();
+        c.select(QTextCursor::Document);
+        c.insertText(was);
+        c.endEditBlock();
+        c.setPosition(qBound(0, dateRestorePos_, static_cast<int>(was.size())));
+        editor_->setTextCursor(c);
+    }
 }
 
 // After a deadline's date: no time (first), one to type, or the usual ones. A deadline with a
@@ -1294,10 +1344,11 @@ void OutlinerView::showDatePopup(Suggest mode) {
     preview_->hide();
 }
 
-bool OutlinerView::acceptDate(int row) {
+void OutlinerView::insertDate(const QDate& d) {
+    calendar_->hide();
+    dateRestoreText_.clear();
     const QString text = editor_->toPlainText();
     const int pos = qBound(0, datePos_, static_cast<int>(text.size()));
-    const QDate d = dateRows_.value(row);
     const bool spaceBefore = pos > 0 && !text[pos - 1].isSpace();
     const QString chip = dateKind_ + ": <" + (d.isValid() ? QLocale::c().toString(d, "yyyy-MM-dd ddd") : QString()) + ">";
     QTextCursor c = editor_->textCursor();
@@ -1315,10 +1366,9 @@ bool OutlinerView::acceptDate(int row) {
         editor_->setTextCursor(c);
         datePos_ = c.position();
         openTimePicker(d);
-        return true;
+        return;
     }
     editor_->setTextCursor(c);
-    return true;
 }
 
 bool OutlinerView::acceptTime(int row) {
@@ -1361,7 +1411,6 @@ bool OutlinerView::runTimerLine() {
 bool OutlinerView::acceptSnippet() {
     auto* pop = static_cast<SuggestPopup*>(snippetPopup_);
     if (!pop->isVisible() || pop->current() < 0) return false;
-    if (suggestMode_ == Suggest::Date) return acceptDate(pop->current());
     if (suggestMode_ == Suggest::Time) return acceptTime(pop->current());
     if (suggestMode_ == Suggest::Timer) {
         // The typed duration (first row, when it reads) or a preset in its place, then run.
@@ -1451,22 +1500,14 @@ bool OutlinerView::runCommand(int index) {
         case Cmd::Now: setMarker("NOW"); break;
         case Cmd::Scheduled:
         case Cmd::Deadline: {
-            // The date goes where the command was typed (the task's own line, or a line of its
-            // own); an older date of the same kind in the block goes. Then the date list opens.
-            const QString kind = cmd == Cmd::Scheduled ? "SCHEDULED" : "DEADLINE";
-            const QRegularExpression old("\\s*" + kind + ":\\s*<[^>]*>");
-            for (QRegularExpressionMatch om = old.match(text); om.hasMatch(); om = old.match(text)) {
-                if (om.capturedStart() < cursor) cursor -= qMin(static_cast<int>(om.capturedLength()), cursor - static_cast<int>(om.capturedStart()));
-                text.remove(om.capturedStart(), om.capturedLength());
-            }
-            QTextCursor c(editor_->document());
+            QTextCursor c(editor_->document());  // the "/query" goes, then the calendar
             c.beginEditBlock();
             c.select(QTextCursor::Document);
             c.insertText(text);
             c.endEditBlock();
             c.setPosition(qBound(0, cursor, static_cast<int>(text.size())));
             editor_->setTextCursor(c);
-            openDatePicker(kind);
+            startDatePick(cmd == Cmd::Scheduled ? "SCHEDULED" : "DEADLINE");
             return true;
         }
         case Cmd::Today: insert = dateLink(0); break;
@@ -1814,6 +1855,25 @@ QRect OutlinerView::carryoverRect(int group, int row) const {
         if (it.section == 2 && it.group == group && it.row == row)
             return QRect(it.textX, it.y + kPadY - verticalScrollBar()->value(), it.textW, it.h);
     return QRect();
+}
+
+// The middle of the first fragment linking to `href` in a block's rendered text (tests click it).
+QPoint OutlinerView::anchorPos(int block, const QString& href) const {
+    for (const Item& it : items_) {
+        if (it.block != block || !it.doc) continue;
+        for (QTextBlock b = it.doc->begin(); b.isValid(); b = b.next())
+            for (auto f = b.begin(); !f.atEnd(); ++f)
+                if (f.fragment().charFormat().anchorHref() == href) {
+                    const QTextLayout* lay = b.layout();
+                    const int pos = f.fragment().position() - b.position();
+                    const QTextLine line = lay->lineForTextPosition(pos);
+                    const qreal x0 = line.cursorToX(pos), x1 = line.cursorToX(pos + f.fragment().length());
+                    return QPoint(it.textX + static_cast<int>((x0 + x1) / 2),
+                                  it.y + kPadY + static_cast<int>(lay->position().y() + line.y() + line.height() / 2) -
+                                      verticalScrollBar()->value());
+                }
+    }
+    return QPoint(-1, -1);
 }
 
 QPoint OutlinerView::carryoverMarkerPos(int group, int row) const {
@@ -2567,6 +2627,7 @@ void OutlinerView::reloadBlocks() {
 
 void OutlinerView::endEdit() {
     if (active_ < 0) return;
+    if (calendar_->isVisible()) cancelDatePick();  // the block goes back as it was, then commits
     revealCaption_ = false;
     commitTyping();
     editBlock_ = -1;
@@ -3223,7 +3284,7 @@ void OutlinerView::mousePressEvent(QMouseEvent* e) {
                 emit carryoverCycle(g.path, g.blocks[it.row].first);
                 return;
             }
-            if (!href.isEmpty()) {
+            if (!href.isEmpty() && !href.startsWith("graphite-date:")) {
                 emit linkActivated(href);
                 return;
             }
@@ -3279,6 +3340,16 @@ void OutlinerView::mousePressEvent(QMouseEvent* e) {
     const QString href = it.doc->documentLayout()->anchorAt(QPointF(c.x() - it.textX, c.y() - (it.y + kPadY)));
     if (href.startsWith("eq:")) {  // [[eq:x]]: the formula on this page
         goToEquation(href.mid(3));
+        return;
+    }
+    if (href.startsWith("graphite-date:")) {  // a date label: the calendar, starting on that date
+        const QString kind = href.mid(14);
+        focusBlock(it.block, 0);
+        const int at = editor_->toPlainText().indexOf(QRegularExpression("\\s*" + kind + ":\\s*<"));
+        QTextCursor c = editor_->textCursor();
+        c.setPosition(qMax(0, at));
+        editor_->setTextCursor(c);
+        startDatePick(kind);
         return;
     }
     if (!href.isEmpty()) {
@@ -3670,6 +3741,7 @@ bool OutlinerView::eventFilter(QObject* obj, QEvent* ev) {
     auto* e = static_cast<QKeyEvent*>(ev);
     wakeCursor();
 
+    if (calendar_->isVisible() && suggestMode_ == Suggest::Date && calendar_->handleKey(e)) return true;
     // While the snippet list shows: arrows choose, Tab/Enter insert, Esc closes it,
     // and Space right after an exact trigger inserts it too.
     if (snippetPopup_->isVisible()) {

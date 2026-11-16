@@ -1214,7 +1214,7 @@ const DRILLS = [
              ["Add a bar of your own with /progress", s => s.flags.cmd_progress || s.blocks.filter(b => findProgress(b.text)).length > 2]]},
   {id: "planning", name: "Planning the day", title: "Time blocks and the timeline",
     intro: `<p>Start a block with a time and it becomes a slot in your day: <code>09:00 TODO Problem set</code>, <code>11:00-12:30 Organic lab</code>. Today's slots appear on the margin timeline, in the sidebar's NEXT row, and in <kbd>Ctrl</kbd> <kbd>D</kbd>, the day's timeline (on the right, with the free time between).</p>
-      <ul><li><span><code>/deadline</code> and <code>/scheduled</code> open a date list, then ask for a time; a timed deadline counts down (T−03H 12M).</span></li>
+      <ul><li><span><code>/deadline</code> and <code>/scheduled</code> open a month calendar (dots mark exams, deadlines and tasks); a deadline then asks for a time; a timed deadline counts down (T−03H 12M).</span></li>
       <li><span>Overdue tasks raise <b>Pattern Blue</b> on today's journal; due within three days, Pattern Orange.</span></li>
       <li><span><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>D</kbd> opens your weekly timetable: day headings with times under them, or <code>Fri 10:00 Physical chemistry</code> on one line. Its classes join each day's timeline.</span></li>
       <li><span>Tag an exam <code>#exam</code> with a date and the sidebar counts down to it.</span></li></ul>`,

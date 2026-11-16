@@ -74,7 +74,7 @@ save is fine: the file is written again.
 Type `/` at the start of a word for the command menu; keep typing to filter (`/h2`, `/chem`,
 `/due`), ↑/↓ and Tab or Enter to run, Esc or Space to close it. Headings 1–3 and plain text;
 TODO / DOING / DONE / LATER / NOW (after any heading, as Logseq writes `## TODO …`);
-Scheduled, Deadline (date list, then time); links to today, tomorrow and yesterday; page link, tag;
+Scheduled, Deadline (calendar, then time); links to today, tomorrow and yesterday; page link, tag;
 formula, display formula, `\ce`, `\pu`; code block, quote, divider; an image from a file
 (copied into `assets/`); the current time; and **Lecture notes**, which turns the block into
 `## Lecture · <date>` with Topics, Key equations, Examples and Questions to ask under it.
@@ -95,8 +95,15 @@ empty pair to type into); pressing them again on a wrapped selection takes the m
 
 ## Dates
 
-`/scheduled` and `/deadline` open a list: a blank date to type yourself first, then Today,
-Tomorrow, In 3 days, Saturday, Next Monday, In a week / two weeks / a month. The date goes
+`/scheduled` and `/deadline` open a month calendar at the cursor. Days with an open exam get a
+red dot, a deadline an amber one, scheduled tasks an accent one (from the whole graph), and the
+line under the grid says what is on the chosen day ("Wed 25 Nov 2026 · in 9 days · 1 exam ·
+2 tasks"). Pick with the mouse, or with the keys: arrows move a day (up and down a week),
+Page Up / Page Down a month, T today, Enter picks, Esc closes and changes nothing. Typing digits
+jumps: `2026-12-01`, `12-01` (this year) or `20` (the 20th of the month shown). The quick
+picks along the top (Today, Tomorrow, Sat, Next Mon, +1 week) write at once. A block that
+already has a date of that kind opens the calendar on it, and the new one replaces it; a click
+on a block's date label (SCHEDULED · WED 25 NOV) does the same. The date goes
 where you typed the command, on the task's own line or a line of its own; Graphite reads
 both. (Logseq itself only recognises the date on a line of its own; on the task's line it
 shows as plain text there, nothing breaks.)
@@ -137,8 +144,8 @@ it on other pages stay, as in Logseq.
 ## Tasks
 
 Start a block with `TODO`, or press **Ctrl+Enter** in it to cycle TODO → DOING → DONE → plain
-(LATER → NOW → DONE for Logseq's NOW workflow). `/scheduled` or `/deadline` opens a date list
-(a blank row to type your own first); a deadline then asks for a time (none first, then one to
+(LATER → NOW → DONE for Logseq's NOW workflow). `/scheduled` or `/deadline` opens the date calendar
+(see Dates); a deadline then asks for a time (none first, then one to
 type, or morning / noon / evening / before midnight). `SCHEDULED: <2026-10-30 Fri>` and
 `DEADLINE: <2026-10-30 Fri 14:00>` can sit anywhere in the block: they always show on a line
 under the task. A deadline with a time counts down, `T−03H 12M`, amber, red in the last hour,

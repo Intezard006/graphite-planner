@@ -133,4 +133,12 @@ QList<Exam> collectExams(const GraphIndex& index);  // by date, then time (untim
 // When an exam is over: the end of its range, else its start time, else the end of its day.
 QDateTime examOver(const Exam& exam);
 
+// What the calendar marks on each day: open exams, open tasks with a DEADLINE that day, and open
+// tasks SCHEDULED that day (exam blocks count as exams only).
+struct DayMarks {
+    int exams = 0, deadlines = 0, scheduled = 0;
+    bool any() const { return exams + deadlines + scheduled > 0; }
+};
+QHash<QDate, DayMarks> dayMarks(const GraphIndex& index, const QString& journalFormat = "yyyy_MM_dd");
+
 }  // namespace graphite

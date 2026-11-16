@@ -319,6 +319,7 @@ void MainWindow::buildUi() {
     cv->setSpacing(0);
 
     view_ = new OutlinerView(content);
+    view_->setDayMarks([this] { return dayMarks(index_, journalFormat_); });  // the date calendar's dots
     connect(view_, &OutlinerView::edited, this, [this] {
         scheduleSave();
         updateStatus();

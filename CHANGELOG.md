@@ -19,6 +19,16 @@ feature in full.
   come from `--wallpaper` / `GRAPHITE_WALLPAPER`, NERV `wall.toml`, pywal, then the wallpaper
   found via awww / swww / hyprpaper, then the built-in palette.
 
+## 0.27.0
+
+- **Date calendar**: `/scheduled` and `/deadline` open a month calendar at the cursor instead
+  of a list. Dots mark the days with an exam (red), a deadline (amber) or scheduled tasks, and
+  the line under it says what is on the chosen day. Arrows, Page Up / Down, T for today, typed
+  dates (`2026-12-01`, `12-01`, `20`), quick picks (Today, Tomorrow, Sat, Next Mon, +1 week) or
+  a click. It opens on the block's current date and replaces it; Esc leaves the block as it
+  was. Clicking a date label on a block opens it too.
+- macOS build: the CI runner moved to macos-15 (macos-14 was retired).
+
 ## 0.26.1
 
 - **Exams in the timeline**: Ctrl+D lists today's exams (a red EXAM chip, the course heading on

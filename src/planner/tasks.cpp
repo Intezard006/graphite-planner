@@ -1,6 +1,7 @@
 #include "planner/tasks.hpp"
 
 #include <QHash>
+#include <QSet>
 #include <QFileInfo>
 #include <QRegularExpression>
 #include <algorithm>
@@ -434,6 +435,21 @@ QDateTime examOver(const Exam& e) {
     const int m = e.slot.end >= 0 ? e.slot.end : e.slot.start;
     if (m < 0) return QDateTime(e.date.addDays(1), QTime(0, 0));
     return QDateTime(e.date, QTime(m / 60, m % 60));
+}
+
+QHash<QDate, DayMarks> dayMarks(const GraphIndex& index, const QString& journalFormat) {
+    QHash<QDate, DayMarks> out;
+    QSet<qint64> examBlocks;
+    for (const Exam& e : collectExams(index)) {
+        examBlocks.insert((qint64(e.page) << 32) | e.block);
+        if (!e.done) ++out[e.date].exams;
+    }
+    for (const Task& t : collectTasks(index, journalFormat)) {
+        if (!isOpen(t.marker) || examBlocks.contains((qint64(t.page) << 32) | t.block)) continue;
+        if (t.deadline.isValid()) ++out[t.deadline].deadlines;
+        if (t.scheduled.isValid()) ++out[t.scheduled].scheduled;
+    }
+    return out;
 }
 
 }  // namespace graphite

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(graphite VERSION 0.26.1 LANGUAGES CXX)
+project(graphite VERSION 0.27.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -57,6 +57,7 @@ if(GRAPHITE_BUILD_UI)
         src/ui/nervpanel.cpp
         src/ui/nervpanel.hpp
         src/ui/outlinerview.cpp
+        src/ui/calendar.cpp
         src/ui/outlinerview.hpp
         src/ui/overlay.cpp
         src/ui/overlay.hpp

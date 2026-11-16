@@ -39,6 +39,8 @@ struct RichContext {
     bool eva = false;                          // immersion: "SYNC 2/5" rather than "2/5"
 };
 
+class CalendarPopup;
+
 class OutlinerView : public QAbstractScrollArea {
     Q_OBJECT
 public:
@@ -156,7 +158,8 @@ public:
     // day. Clicking a row's marker (or Ctrl+Enter over the row) asks for carryoverCycle.
     void setCarryover(const QString& label, const QList<RefGroup>& groups);
     QRect carryoverRect(int group, int row) const;      // viewport coordinates, for tests
-    QPoint carryoverMarkerPos(int group, int row) const;  // the middle of the row's marker word
+    QPoint carryoverMarkerPos(int group, int row) const;
+    QPoint anchorPos(int block, const QString& href) const;  // a link in a block's text (tests)  // the middle of the row's marker word
     const QList<RefGroup>& carryover() const { return carryover_; }
     int referenceCount() const { return refTotal_; }
     // Where a reference row is, in viewport coordinates (for tests); empty if none.
@@ -171,6 +174,9 @@ public:
     void setJournalTitle(std::function<QString(const QDate&)> fn) { journalTitleFor_ = std::move(fn); }
     // "/image" asks for a file through this (a file dialog; tests replace it).
     void setImagePicker(std::function<QString()> fn) { pickImage_ = std::move(fn); }
+    // What the date calendar marks on each day (exams, deadlines, tasks); asked when it opens.
+    void setDayMarks(std::function<QHash<QDate, DayMarks>()> fn) { dayMarks_ = std::move(fn); }
+    CalendarPopup* calendar() const { return calendar_; }  // tests
     // The whole page (collapsed blocks included) as an A4 PDF in print colours.
     bool exportPdf(const QString& file, const QString& title, const QString& kind, const QDate& date) const;
 
@@ -307,14 +313,21 @@ private:
     QWidget* snippetPopup_ = nullptr;
     enum class Suggest { None, Snippets, Commands, Date, Time, Timer } suggestMode_ = Suggest::None;
     void showDatePopup(Suggest mode);  // the rows are set: place and show the list
-    void openDatePicker(const QString& kind);  // after /scheduled or /deadline
-    bool acceptDate(int row);
+    // /scheduled, /deadline or a click on a date label: the block's old date of that kind is
+    // taken out (the calendar starts on it) and the calendar opens at the cursor.
+    void startDatePick(const QString& kind);
+    void openDatePicker(const QString& kind, const QDate& start);
+    void insertDate(const QDate& day);  // the calendar's pick, at datePos_
+    void cancelDatePick();              // Esc: the block as it was before the command
+    CalendarPopup* calendar_ = nullptr;
+    QString dateRestoreText_;
+    int dateRestorePos_ = -1;
+    std::function<QHash<QDate, DayMarks>()> dayMarks_;
     void openTimePicker(const QDate& day);  // after a deadline's date
     bool acceptTime(int row);
     bool runTimerLine();
     QString dateKind_;
     int datePos_ = -1;
-    QList<QDate> dateRows_;
     QList<QTime> timeRows_;  // after a deadline's date: row 0 = no time, 1 = type one
     QStringList timerRows_;  // per timer row: the preset it puts in, or "" for the typed one
     QList<Snippet> snippetMatches_;

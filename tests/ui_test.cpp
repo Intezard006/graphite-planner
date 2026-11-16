@@ -45,6 +45,7 @@
 #include "ui/mainwindow.hpp"
 #include "ui/nervpanel.hpp"
 #include "ui/outlinerview.hpp"
+#include "ui/calendar.hpp"
 #include "ui/overlay.hpp"
 #include "desktop/agendafile.hpp"
 #include "desktop/palette.hpp"
@@ -874,27 +875,44 @@ int main(int argc, char** argv) {
     press(ed, Qt::Key_Tab);
     CHECK_EQ(ed->toPlainText(), "## TODO Kinetics ");  // heading first, as Logseq writes it
     typeText(ed, "/due");  // matched by its other word
-    press(ed, Qt::Key_Return);   // the date list opens: blank first, then today, tomorrow, ...
-    shot(w, "39_date_list");
-    for (int i = 0; i < 6; ++i) press(ed, Qt::Key_Down);  // "In a week"
+    press(ed, Qt::Key_Return);   // the calendar opens on today
+    CalendarPopup* cal = view->calendar();
+    CHECK(cal && cal->isVisible() && cal->selected() == QDate::currentDate());
+    shot(w, "39_date_calendar");
+    press(ed, Qt::Key_Down);     // a week on
     press(ed, Qt::Key_Return);
+    CHECK(!cal->isVisible());
     shot(w, "42_time_list");
     press(ed, Qt::Key_Return);   // a deadline asks for a time next: the first row is none
     // On the task's own line, where the command was typed.
     CHECK_EQ(ed->toPlainText(), "## TODO Kinetics DEADLINE: <" + QLocale::c().toString(QDate::currentDate().addDays(7), "yyyy-MM-dd ddd") + ">");
     typeText(ed, " /sched");
     press(ed, Qt::Key_Return);
-    press(ed, Qt::Key_Return);   // the blank one: type the date yourself
-    typeText(ed, "2026-12-01");
-    CHECK(ed->toPlainText().endsWith("SCHEDULED: <2026-12-01>"));
+    typeText(ed, "2026-12-01");  // typed digits jump to that day
+    CHECK(cal->selected() == QDate(2026, 12, 1) && cal->footer().startsWith("Type a date"));
+    press(ed, Qt::Key_Return);
+    CHECK(ed->toPlainText().endsWith("SCHEDULED: <2026-12-01 Tue>"));
     press(ed, Qt::Key_End);
     typeText(ed, " /due");
     press(ed, Qt::Key_Return);
-    press(ed, Qt::Key_Down);
+    CHECK(cal->selected() == QDate::currentDate().addDays(7));  // starts on the deadline it replaces
+    typeText(ed, "t");           // T: today
     press(ed, Qt::Key_Return);   // today: replaces the earlier deadline, so only one remains
     typeText(ed, "23:59");       // typing at the time list: the time goes into the brackets
     CHECK(ed->toPlainText().count("DEADLINE:") == 1);
     CHECK(ed->toPlainText().contains("DEADLINE: <" + QLocale::c().toString(QDate::currentDate(), "yyyy-MM-dd ddd") + " 23:59>"));
+    {   // Esc: the block as it was (the old date back), nothing inserted.
+        press(ed, Qt::Key_End);
+        const QString before = ed->toPlainText();
+        typeText(ed, " /sched");
+        press(ed, Qt::Key_Return);
+        CHECK(cal->isVisible() && cal->selected() == QDate(2026, 12, 1));
+        press(ed, Qt::Key_PageDown);
+        CHECK(cal->selected() == QDate(2027, 1, 1));
+        press(ed, Qt::Key_Escape);
+        CHECK(!cal->isVisible());
+        CHECK_EQ(ed->toPlainText(), before + " ");  // only the space typed before the command
+    }
     ed->selectAll();
     typeText(ed, "rate /chem");
     press(ed, Qt::Key_Return);
@@ -2618,6 +2636,70 @@ int main(int argc, char** argv) {
         QSettings().remove("exams/finished");
         QFile::remove(ex);
         reopenToday();
+    }
+
+    // 59. The date calendar: dots for exams / deadlines / scheduled tasks (from the whole graph),
+    // a click on a block's date label opens it on that date, a click on a day or a quick pick
+    // writes it; Esc after a label click leaves the block exactly as it was.
+    {
+        const QDate today = QDate::currentDate();
+        const QDate d5 = today.addDays(5), d9 = today.addDays(9);
+        auto iso = [](const QDate& d) { return QLocale::c().toString(d, "yyyy-MM-dd ddd"); };
+        const QString marks = g + "/pages/Marks.md";
+        writeFile(marks, "- Quiz #exam SCHEDULED: <" + iso(d5) + ">\n- TODO report DEADLINE: <" + iso(d5) + ">\n- TODO read SCHEDULED: <" +
+                             iso(d9) + ">\n- DONE closed SCHEDULED: <" + iso(today.addDays(11)) + ">");
+        const QString page = g + "/pages/Plan.md";
+        const QString planText = "- TODO revise SCHEDULED: <" + iso(d9) + ">\n- TODO lab report";
+        writeFile(page, planText);
+        CHECK(w.openPath(g + "/pages/Showcase.md"));
+        trigger(w, "Ctrl+J");  // a sync, so Marks.md is in the index
+        settle();
+        CHECK(w.openPath(page));
+        settle();
+        const QPoint label = view->anchorPos(0, "graphite-date:SCHEDULED");
+        CHECK(label.x() >= 0);
+        QTest::mouseClick(view->viewport(), Qt::LeftButton, {}, label);
+        settle();
+        CalendarPopup* cal = view->calendar();
+        CHECK(cal->isVisible() && cal->selected() == d9);
+        CHECK(cal->footer().contains("2 tasks"));  // "read" elsewhere and "revise" here
+        cal->open("SCHEDULED", d5, dayMarks(w.index()));  // the same marks, looked at on d5
+        CHECK(cal->footer().contains("1 exam") && cal->footer().contains("1 deadline") && !cal->footer().contains("task"));
+        cal->open("SCHEDULED", d9, dayMarks(w.index()));
+        CHECK(dayMarks(w.index()).value(today.addDays(11)).any() == false);  // done ones are not marked
+        shot(w, "65_date_calendar");
+        press(editorOf(w), Qt::Key_Escape);
+        CHECK(!cal->isVisible());
+        CHECK_EQ(editorOf(w)->toPlainText(), "TODO revise SCHEDULED: <" + iso(d9) + ">");
+        // A click on a day: that date, in place of the old one (still editing: from the command).
+        {
+            QTextEdit* e2 = editorOf(w);
+            QTextCursor c = e2->textCursor();
+            c.movePosition(QTextCursor::End);
+            e2->setTextCursor(c);
+            typeText(e2, " /sched");
+            press(e2, Qt::Key_Return);
+        }
+        CHECK(cal->isVisible());
+        const QDate pick = cal->month().addDays(14);  // the 15th of the shown month
+        QTest::mouseClick(cal, Qt::LeftButton, {}, cal->dayRect(pick).center());
+        CHECK(!cal->isVisible());
+        CHECK(editorOf(w)->toPlainText().count("SCHEDULED:") == 1 && editorOf(w)->toPlainText().contains("SCHEDULED: <" + iso(pick) + ">"));
+        // A quick pick: Tomorrow.
+        view->focusBlock(1);
+        QTextEdit* e3 = editorOf(w);
+        QTextCursor c3 = e3->textCursor();
+        c3.movePosition(QTextCursor::End);
+        e3->setTextCursor(c3);
+        typeText(e3, " /sched");
+        press(e3, Qt::Key_Return);
+        QTest::mouseClick(cal, Qt::LeftButton, {}, cal->chipRect(1).center());
+        CHECK_EQ(e3->toPlainText(), "TODO lab report SCHEDULED: <" + iso(today.addDays(1)) + ">");
+        press(e3, Qt::Key_Escape);
+        settle();
+        CHECK(w.openPath(g + "/pages/Showcase.md"));
+        QFile::remove(marks);
+        QFile::remove(page);
     }
 
     // 8. Screenshots of a page that shows every kind of formatting.
